@@ -29,12 +29,15 @@ public class Program
                 policy => policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
         });
 
-        builder.Configuration.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
+        builder.Configuration
+    .SetBasePath(Directory.GetCurrentDirectory())
+    .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
+    .AddEnvironmentVariables();
+
 
         var app = builder.Build();
 
         app.UseCors("AllowReactApp");
-        //app.UseHttpsRedirection();
 
         // ================== AUTH ==================
         app.MapPost("/auth/login", async (LoginRequest login) =>
@@ -1406,6 +1409,9 @@ catch (Exception ex)
     return Results.Ok(new { message = "Visita procesada" });
 });
 
+
+app.MapGet("/", () => Results.Ok("✅ API Skynet Auth corriendo en Render"));
+app.MapGet("/ping", () => Results.Ok("pong ✅"));
 
         // ================== RUN ==================
         app.Run();
