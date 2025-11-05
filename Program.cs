@@ -34,7 +34,7 @@ public class Program
         var app = builder.Build();
 
         app.UseCors("AllowReactApp");
-        app.UseHttpsRedirection();
+        //app.UseHttpsRedirection();
 
         // ================== AUTH ==================
         app.MapPost("/auth/login", async (LoginRequest login) =>
