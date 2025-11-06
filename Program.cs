@@ -103,6 +103,7 @@ app.MapGet("/test-db", async () =>
         var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 
         using var connection = new SqlConnection(connectionString);
+        Console.WriteLine($"Login attempt: user={login?.usuario} | pass={login?.clave} | IP={clientIp}");
         await connection.OpenAsync();
 
         var hashedPassword = HashSHA256(login.clave);
