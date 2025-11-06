@@ -28,12 +28,19 @@ public class Program
             options.SerializerOptions.PropertyNameCaseInsensitive = false;
         });
 
-        builder.Services.AddCors(options =>
-        {
-            options.AddPolicy("AllowReactApp",
-                policy => policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
-        });
-
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowReactApp",
+        policy => policy
+            .WithOrigins(
+                "https://skynet-uasn.onrender.com", // dominio frontend
+                "http://localhost:5173"             // opcional para desarrollo
+            )
+            .AllowAnyMethod()
+            .AllowAnyHeader()
+            .AllowCredentials()
+        );
+});
         builder.Configuration
     .SetBasePath(Directory.GetCurrentDirectory())
     .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
