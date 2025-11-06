@@ -94,7 +94,7 @@ app.MapGet("/test-db", async () =>
 
 
         // ================== AUTH ==================
-        app.MapPost("/auth/login", async (HttpContext context, LoginRequest login) =>
+               app.MapPost("/auth/login", async (HttpContext context, LoginRequest login) =>
 {
     string? clientIp = context.Connection.RemoteIpAddress?.ToString();
 
