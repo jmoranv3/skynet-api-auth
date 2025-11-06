@@ -50,6 +50,8 @@ app.MapGet("/test-db", async () =>
     var connectionString = Environment.GetEnvironmentVariable("DefaultConnection")
         ?? builder.Configuration.GetConnectionString("DefaultConnection");
 
+
+Console.WriteLine($"connectionString");
     if (string.IsNullOrWhiteSpace(connectionString))
         return Results.BadRequest("❌ No se encontró la cadena de conexión.");
 
@@ -103,10 +105,14 @@ app.MapGet("/test-db", async () =>
         var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 
         using var connection = new SqlConnection(connectionString);
-        Console.WriteLine($"Login attempt: user={login?.usuario} | pass={login?.clave} | IP={clientIp}");
+       
         await connection.OpenAsync();
 
         var hashedPassword = HashSHA256(login.clave);
+
+
+         Console.WriteLine(hashedPassword);
+
 
         var query = @"SELECT 
                         U.id_usuario, 

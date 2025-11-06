@@ -1,0 +1,3 @@
+﻿<Project>
+  <Import Project="..\build\skynet-api-auth.props" />
+</Project>

@@ -1,0 +1,12 @@
+{
+  "Version": 1,
+  "Hash": "6w7ol99sQnVJg6un3RSWfEFeiPra8UhkpMBIjCDneEM=",
+  "Source": "skynet-api-auth",
+  "BasePath": "_content/skynet-api-auth",
+  "Mode": "Default",
+  "ManifestType": "Build",
+  "ReferencedProjectsConfiguration": [],
+  "DiscoveryPatterns": [],
+  "Assets": [],
+  "Endpoints": []
+}
