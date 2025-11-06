@@ -40,70 +40,74 @@ public class Program
         app.UseCors("AllowReactApp");
 
         // ================== AUTH ==================
-        app.MapPost("/auth/login", async (LoginRequest login) =>
+        app.MapPost("/auth/login", async (HttpContext context, LoginRequest login) =>
+{
+    string? clientIp = context.Connection.RemoteIpAddress?.ToString();
+
+    try
+    {
+        var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+
+        using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+
+        var hashedPassword = HashSHA256(login.clave);
+
+        var query = @"SELECT 
+                        U.id_usuario, 
+                        U.usuario, 
+                        R.descripcion 
+                      FROM TBL_USUARIO U
+                      INNER JOIN TBL_ROL R ON U.id_rol = R.id_rol
+                      WHERE U.usuario = @usuario 
+                        AND U.clave = @clave 
+                        AND U.activo = 1";
+
+        using var command = new SqlCommand(query, connection);
+        command.Parameters.AddWithValue("@usuario", login.usuario);
+        command.Parameters.AddWithValue("@clave", hashedPassword);
+
+        using var reader = await command.ExecuteReaderAsync();
+
+        if (await reader.ReadAsync())
         {
+            int idUsuario = reader.GetInt32(0);
+            string user = reader.GetString(1);
+            string rolName = reader.GetString(2);
 
-            try
-             {
-      
-            var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-
-            using var connection = new SqlConnection(connectionString);
-            await connection.OpenAsync();
-
-            var hashedPassword = HashSHA256(login.clave);
-
-            var query = @"SELECT 
-                            U.id_usuario, 
-                            U.usuario, 
-                            R.descripcion 
-                          FROM TBL_USUARIO U
-                          INNER JOIN TBL_ROL R ON U.id_rol = R.id_rol
-                          WHERE U.usuario = @usuario 
-                            AND U.clave = @clave 
-                            AND U.activo = 1";
-
-            using var command = new SqlCommand(query, connection);
-            command.Parameters.AddWithValue("@usuario", login.usuario);
-            command.Parameters.AddWithValue("@clave", hashedPassword);
-
-            using var reader = await command.ExecuteReaderAsync();
-
-            if (await reader.ReadAsync())
+            string rolCode = rolName switch
             {
-                int idUsuario = reader.GetInt32(0);
-                string user = reader.GetString(1);
-                string rolName = reader.GetString(2);
+                "ADMINISTRADOR" => "ADMIN",
+                "SUPERVISOR" => "SUP",
+                "TECNICO" => "TEC",
+                _ => "UNKNOWN"
+            };
 
-                string rolCode = rolName switch
+            return Results.Ok(new
+            {
+                message = "Inicio de sesión exitoso",
+                id_usuario = idUsuario,
+                usuario = user,
+                rol = new
                 {
-                    "ADMINISTRADOR" => "ADMIN",
-                    "SUPERVISOR" => "SUP",
-                    "TECNICO" => "TEC",
-                    _ => "UNKNOWN"
-                };
+                    codigo = rolCode,
+                    nombre = rolName
+                }
+            });
+        }
 
-                return Results.Ok(new
-                    {
-                        message = "Inicio de sesión exitoso",
-                        id_usuario = idUsuario,
-                        usuario = user,
-                        rol = new
-                        {
-                            codigo = rolCode,
-                            nombre = rolName
-                        }
-                    });
-            }
-
-                return Results.Json(new { message = "Usuario o contraseña incorrectos" }, statusCode: 401);
-            
-              }
+        return Results.Json(new { message = "Usuario o contraseña incorrectos" }, statusCode: 401);
+    }
+    catch (SqlException ex)
+    {
+        return Results.Problem($"❌ Error al conectar a SQL Server:\n{ex.Message}\n\n🌐 IP detectada: {clientIp}\n\nAgrega esta IP en el firewall de Azure SQL si es necesario.");
+    }
     catch (Exception ex)
     {
-        return Results.Problem($"❌ Error al conectar a SQL Server:\n{ex.Message}");
+        return Results.Problem($"❌ Error inesperado:\n{ex.Message}\n\n🌐 IP detectada: {clientIp}");
     }
-        });
+});
+
 
         app.MapPost("/auth/hash", async (HttpRequest request) =>
         {
