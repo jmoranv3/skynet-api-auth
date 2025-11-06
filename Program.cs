@@ -42,7 +42,10 @@ public class Program
         // ================== AUTH ==================
         app.MapPost("/auth/login", async (LoginRequest login) =>
         {
-            var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+            //var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+            var connectionString = Environment.GetEnvironmentVariable("DefaultConnection")
+    ?? builder.Configuration.GetConnectionString("DefaultConnection");
+
 
             using var connection = new SqlConnection(connectionString);
             await connection.OpenAsync();
