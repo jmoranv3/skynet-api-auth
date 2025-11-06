@@ -9,6 +9,8 @@ using System.Net.Mail;
 
 namespace SkynetApiAuth;
 
+
+
 public class Program
 {
     public static void Main(string[] args)
@@ -16,6 +18,9 @@ public class Program
         var builder = WebApplication.CreateBuilder(args);
         builder.Services.AddSingleton<SkynetApiAuth.Services.EmailService>();
 
+
+    var connectionString = Environment.GetEnvironmentVariable("DefaultConnection")
+    ?? builder.Configuration.GetConnectionString("DefaultConnection");
 
         // JSON case sensitivity: enforce exact property names (no case-insensitive binding)
         builder.Services.ConfigureHttpJsonOptions(options =>
@@ -40,17 +45,26 @@ public class Program
         app.UseCors("AllowReactApp");
 
 
+        app.MapGet("/test-db", async () =>
+    {
+        if (string.IsNullOrWhiteSpace(connectionString))
+            return Results.BadRequest("❌ No se encontró la cadena de conexión.");
+
+        try
+        {
+            // Intentar conexión a SQL
+            using var cn = new SqlConnection(connectionString);
+            await cn.OpenAsync();
+
+            return Results.Ok("✅ Conexión a SQL Server exitosa");
+        }
+        catch (Exception ex)
+        {
+            return Results.Problem($"❌ Error al conectar a SQL Server:\n{ex.Message}");
+        }
+    });
 
 
-
-
-
-
-        app.MapGet("/my-ip", (HttpContext ctx) =>
-{
-    var ip = ctx.Connection.RemoteIpAddress?.ToString();
-    return Results.Ok(new { ip });
-});
 
         // ================== AUTH ==================
         app.MapPost("/auth/login", async (HttpContext context, LoginRequest login) =>
@@ -170,18 +184,18 @@ public class Program
         });
 
         // ================== DASHBOARD ==================
-app.MapGet("/api/dashboard/visitas/programadas", async (HttpRequest request) =>
-{
-    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+        app.MapGet("/api/dashboard/visitas/programadas", async (HttpRequest request) =>
+        {
+            var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 
-    string rol = request.Headers["rol"].ToString().ToUpper();
-    int idUsuario = int.Parse(request.Headers["id_usuario"]);
+            string rol = request.Headers["rol"].ToString().ToUpper();
+            int idUsuario = int.Parse(request.Headers["id_usuario"]);
 
 
-    using var connection = new SqlConnection(connectionString);
-    await connection.OpenAsync();
+            using var connection = new SqlConnection(connectionString);
+            await connection.OpenAsync();
 
-    var query = @"
+            var query = @"
         SELECT 
             V.id_visita,
             C.nombre AS cliente,
@@ -202,56 +216,56 @@ app.MapGet("/api/dashboard/visitas/programadas", async (HttpRequest request) =>
             V.fecha_visita ASC,
             U.usuario ASC";
 
-    string whereClause = "WHERE CONVERT(date, V.fecha_visita) = CONVERT(date, GETDATE())";
+            string whereClause = "WHERE CONVERT(date, V.fecha_visita) = CONVERT(date, GETDATE())";
 
-    if (rol == "SUP")
-    {
-        whereClause += @" AND V.id_tecnico IN (
+            if (rol == "SUP")
+            {
+                whereClause += @" AND V.id_tecnico IN (
                             SELECT id_tecnico 
                             FROM TBL_SUPERVISOR_TECNICO 
                             WHERE id_supervisor = @idUsuario
                         )";
-    }
-    else if (rol == "TEC")
-    {
-       ;
-        whereClause += " AND V.id_tecnico = @idUsuario";
-    }
+            }
+            else if (rol == "TEC")
+            {
+                ;
+                whereClause += " AND V.id_tecnico = @idUsuario";
+            }
 
-    query = query.Replace("/**WHERE_CLAUSE**/", whereClause);
+            query = query.Replace("/**WHERE_CLAUSE**/", whereClause);
 
-    using var command = new SqlCommand(query, connection);
-    command.Parameters.AddWithValue("@idUsuario", idUsuario);
+            using var command = new SqlCommand(query, connection);
+            command.Parameters.AddWithValue("@idUsuario", idUsuario);
 
-    using var reader = await command.ExecuteReaderAsync();
-    var visitas = new List<object>();
+            using var reader = await command.ExecuteReaderAsync();
+            var visitas = new List<object>();
 
-    while (await reader.ReadAsync())
-    {
-        visitas.Add(new
-        {
-            id_visita = reader.GetInt32(0),
-            cliente = reader.GetString(1),
-            tecnico = reader.GetString(2),
-            estado = reader.GetString(3),
-            fecha_visita = reader.GetDateTime(4).ToString("yyyy-MM-dd")
+            while (await reader.ReadAsync())
+            {
+                visitas.Add(new
+                {
+                    id_visita = reader.GetInt32(0),
+                    cliente = reader.GetString(1),
+                    tecnico = reader.GetString(2),
+                    estado = reader.GetString(3),
+                    fecha_visita = reader.GetDateTime(4).ToString("yyyy-MM-dd")
+                });
+            }
+
+            return Results.Ok(new { total = visitas.Count, visitas });
         });
-    }
 
-    return Results.Ok(new { total = visitas.Count, visitas });
-});
+        app.MapGet("/api/dashboard/visitas/completadas", async (HttpRequest request) =>
+        {
+            var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 
-app.MapGet("/api/dashboard/visitas/completadas", async (HttpRequest request) =>
-{
-    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+            string rol = request.Headers["rol"].ToString().ToUpper();
+            int idUsuario = int.Parse(request.Headers["id_usuario"]);
 
-    string rol = request.Headers["rol"].ToString().ToUpper();
-    int idUsuario = int.Parse(request.Headers["id_usuario"]);
+            using var connection = new SqlConnection(connectionString);
+            await connection.OpenAsync();
 
-    using var connection = new SqlConnection(connectionString);
-    await connection.OpenAsync();
-
-    var query = @"
+            var query = @"
         SELECT 
             V.id_visita,
             C.nombre AS cliente,
@@ -264,56 +278,56 @@ app.MapGet("/api/dashboard/visitas/completadas", async (HttpRequest request) =>
         /**WHERE_CLAUSE**/
         ORDER BY V.fecha_visita ASC, U.usuario ASC";
 
-    string whereClause = "WHERE V.estado = 'COMPLETADA' AND CONVERT(date, V.fecha_visita) = CONVERT(date, GETDATE())";
+            string whereClause = "WHERE V.estado = 'COMPLETADA' AND CONVERT(date, V.fecha_visita) = CONVERT(date, GETDATE())";
 
-    if (rol == "SUP")
-    {
-        whereClause += @" AND V.id_tecnico IN (
+            if (rol == "SUP")
+            {
+                whereClause += @" AND V.id_tecnico IN (
                             SELECT id_tecnico 
                             FROM TBL_SUPERVISOR_TECNICO 
                             WHERE id_supervisor = @idUsuario
                         )";
-    }
-    else if (rol == "TEC")
-    {
-        whereClause += " AND V.id_tecnico = @idUsuario";
-    }
+            }
+            else if (rol == "TEC")
+            {
+                whereClause += " AND V.id_tecnico = @idUsuario";
+            }
 
-    query = query.Replace("/**WHERE_CLAUSE**/", whereClause);
+            query = query.Replace("/**WHERE_CLAUSE**/", whereClause);
 
-    using var command = new SqlCommand(query, connection);
-    command.Parameters.AddWithValue("@idUsuario", idUsuario);
+            using var command = new SqlCommand(query, connection);
+            command.Parameters.AddWithValue("@idUsuario", idUsuario);
 
-    using var reader = await command.ExecuteReaderAsync();
-    var visitas = new List<object>();
+            using var reader = await command.ExecuteReaderAsync();
+            var visitas = new List<object>();
 
-    while (await reader.ReadAsync())
-    {
-        visitas.Add(new
-        {
-            id_visita = reader.GetInt32(0),
-            cliente = reader.GetString(1),
-            tecnico = reader.GetString(2),
-            estado = reader.GetString(3),
-            fecha_visita = reader.GetDateTime(4).ToString("yyyy-MM-dd")
+            while (await reader.ReadAsync())
+            {
+                visitas.Add(new
+                {
+                    id_visita = reader.GetInt32(0),
+                    cliente = reader.GetString(1),
+                    tecnico = reader.GetString(2),
+                    estado = reader.GetString(3),
+                    fecha_visita = reader.GetDateTime(4).ToString("yyyy-MM-dd")
+                });
+            }
+
+            return Results.Ok(new { total = visitas.Count, visitas });
         });
-    }
-
-    return Results.Ok(new { total = visitas.Count, visitas });
-});
 
 
-app.MapGet("/api/dashboard/visitas/pendientes", async (HttpRequest request) =>
-{
-    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+        app.MapGet("/api/dashboard/visitas/pendientes", async (HttpRequest request) =>
+        {
+            var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 
-    string rol = request.Headers["rol"].ToString().ToUpper();
-    int idUsuario = int.Parse(request.Headers["id_usuario"]);
+            string rol = request.Headers["rol"].ToString().ToUpper();
+            int idUsuario = int.Parse(request.Headers["id_usuario"]);
 
-    using var connection = new SqlConnection(connectionString);
-    await connection.OpenAsync();
+            using var connection = new SqlConnection(connectionString);
+            await connection.OpenAsync();
 
-    var query = @"
+            var query = @"
         SELECT 
             V.id_visita,
             C.nombre AS cliente,
@@ -334,43 +348,43 @@ app.MapGet("/api/dashboard/visitas/pendientes", async (HttpRequest request) =>
             V.fecha_visita ASC,
             U.usuario ASC";
 
-    string whereClause = "WHERE V.estado in ('PENDIENTE','EN_PROGRESO')";
+            string whereClause = "WHERE V.estado in ('PENDIENTE','EN_PROGRESO')";
 
-    if (rol == "SUP")
-    {
-        whereClause += @" AND V.id_tecnico IN (
+            if (rol == "SUP")
+            {
+                whereClause += @" AND V.id_tecnico IN (
                             SELECT id_tecnico 
                             FROM TBL_SUPERVISOR_TECNICO 
                             WHERE id_supervisor = @idUsuario
                         )";
-    }
-    else if (rol == "TEC")
-    {
-        whereClause += " AND V.id_tecnico = @idUsuario";
-    }
+            }
+            else if (rol == "TEC")
+            {
+                whereClause += " AND V.id_tecnico = @idUsuario";
+            }
 
-    query = query.Replace("/**WHERE_CLAUSE**/", whereClause);
+            query = query.Replace("/**WHERE_CLAUSE**/", whereClause);
 
-    using var command = new SqlCommand(query, connection);
-    command.Parameters.AddWithValue("@idUsuario", idUsuario);
+            using var command = new SqlCommand(query, connection);
+            command.Parameters.AddWithValue("@idUsuario", idUsuario);
 
-    using var reader = await command.ExecuteReaderAsync();
-    var visitas = new List<object>();
+            using var reader = await command.ExecuteReaderAsync();
+            var visitas = new List<object>();
 
-    while (await reader.ReadAsync())
-    {
-        visitas.Add(new
-        {
-            id_visita = reader.GetInt32(0),
-            cliente = reader.GetString(1),
-            tecnico = reader.GetString(2),
-            estado = reader.GetString(3),
-            fecha_visita = reader.GetDateTime(4).ToString("yyyy-MM-dd")
+            while (await reader.ReadAsync())
+            {
+                visitas.Add(new
+                {
+                    id_visita = reader.GetInt32(0),
+                    cliente = reader.GetString(1),
+                    tecnico = reader.GetString(2),
+                    estado = reader.GetString(3),
+                    fecha_visita = reader.GetDateTime(4).ToString("yyyy-MM-dd")
+                });
+            }
+
+            return Results.Ok(new { total = visitas.Count, visitas });
         });
-    }
-
-    return Results.Ok(new { total = visitas.Count, visitas });
-});
 
 
         // ============================= CRUD USUARIOS - SKYNET =============================
@@ -556,14 +570,14 @@ app.MapGet("/api/dashboard/visitas/pendientes", async (HttpRequest request) =>
             }
 
             try
-                {
-                    var emailService = app.Services.GetService<SkynetApiAuth.Services.EmailService>();
-                    emailService?.SendUserCredentials(dto.correo, dto.usuario, dto.clave, dto.rol, dto.nombre);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine("Error al enviar correo: " + ex.Message);
-                }
+            {
+                var emailService = app.Services.GetService<SkynetApiAuth.Services.EmailService>();
+                emailService?.SendUserCredentials(dto.correo, dto.usuario, dto.clave, dto.rol, dto.nombre);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error al enviar correo: " + ex.Message);
+            }
 
 
             return Results.Ok(new { message = "Usuario creado exitosamente", id_usuario = newId });
@@ -674,123 +688,125 @@ app.MapGet("/api/dashboard/visitas/pendientes", async (HttpRequest request) =>
             return Results.Ok(new { message = "Usuario inactivado correctamente" });
         });
 
-// POST /api/clientes (ADMINISTRADOR, SUPERVISOR)
-app.MapPost("/api/clientes", async (HttpRequest request) =>
-{
-    var rol = request.Headers["rol"].ToString().ToUpper();
-    if (!(rol == "ADMINISTRADOR" || rol == "SUPERVISOR")) return Results.Unauthorized();
+        // POST /api/clientes (ADMINISTRADOR, SUPERVISOR)
+        app.MapPost("/api/clientes", async (HttpRequest request) =>
+        {
+            var rol = request.Headers["rol"].ToString().ToUpper();
+            if (!(rol == "ADMINISTRADOR" || rol == "SUPERVISOR")) return Results.Unauthorized();
 
-    var dto = await request.ReadFromJsonAsync<ClienteDto>();
-    if (dto == null || string.IsNullOrWhiteSpace(dto.nombre)) return Results.BadRequest(new { message = "Nombre requerido" });
+            var dto = await request.ReadFromJsonAsync<ClienteDto>();
+            if (dto == null || string.IsNullOrWhiteSpace(dto.nombre)) return Results.BadRequest(new { message = "Nombre requerido" });
 
-    using var con = new SqlConnection(builder.Configuration.GetConnectionString("DefaultConnection"));
-    await con.OpenAsync();
+            using var con = new SqlConnection(builder.Configuration.GetConnectionString("DefaultConnection"));
+            await con.OpenAsync();
 
-    var cmd = new SqlCommand(@"
+            var cmd = new SqlCommand(@"
         INSERT INTO TBL_CLIENTES (nombre, nit, direccion, coordenadas, correo)
         VALUES (@n,@nit,@dir,@coord,@mail);
         SELECT SCOPE_IDENTITY();", con);
-    cmd.Parameters.AddWithValue("@n", dto.nombre);
-    cmd.Parameters.AddWithValue("@nit", (object?)dto.nit ?? DBNull.Value);
-    cmd.Parameters.AddWithValue("@dir", (object?)dto.direccion ?? DBNull.Value);
-    cmd.Parameters.AddWithValue("@coord", (object?)dto.coordenadas ?? DBNull.Value);
-    cmd.Parameters.AddWithValue("@mail", (object?)dto.correo ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@n", dto.nombre);
+            cmd.Parameters.AddWithValue("@nit", (object?)dto.nit ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@dir", (object?)dto.direccion ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@coord", (object?)dto.coordenadas ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@mail", (object?)dto.correo ?? DBNull.Value);
 
-    var id = Convert.ToInt32(await cmd.ExecuteScalarAsync());
-    return Results.Ok(new { message = "Cliente creado", id_cliente = id });
-});
+            var id = Convert.ToInt32(await cmd.ExecuteScalarAsync());
+            return Results.Ok(new { message = "Cliente creado", id_cliente = id });
+        });
 
-// PUT /api/clientes/{id} (ADMINISTRADOR, SUPERVISOR)
-app.MapPut("/api/clientes/{id:int}", async (int id, HttpRequest request) =>
-{
-    var rol = request.Headers["rol"].ToString().ToUpper();
-    if (!(rol == "ADMINISTRADOR" || rol == "SUPERVISOR")) return Results.Unauthorized();
+        // PUT /api/clientes/{id} (ADMINISTRADOR, SUPERVISOR)
+        app.MapPut("/api/clientes/{id:int}", async (int id, HttpRequest request) =>
+        {
+            var rol = request.Headers["rol"].ToString().ToUpper();
+            if (!(rol == "ADMINISTRADOR" || rol == "SUPERVISOR")) return Results.Unauthorized();
 
-    var dto = await request.ReadFromJsonAsync<ClienteUpdateDto>();
-    if (dto == null) return Results.BadRequest();
+            var dto = await request.ReadFromJsonAsync<ClienteUpdateDto>();
+            if (dto == null) return Results.BadRequest();
 
-    using var con = new SqlConnection(builder.Configuration.GetConnectionString("DefaultConnection"));
-    await con.OpenAsync();
+            using var con = new SqlConnection(builder.Configuration.GetConnectionString("DefaultConnection"));
+            await con.OpenAsync();
 
-    var cmd = new SqlCommand(@"
+            var cmd = new SqlCommand(@"
         UPDATE TBL_CLIENTES
         SET nombre=@n, nit=@nit, direccion=@dir, coordenadas=@coord, correo=@mail, activo=@act
         WHERE id_cliente=@id", con);
-    cmd.Parameters.AddWithValue("@id", id);
-    cmd.Parameters.AddWithValue("@n", dto.nombre);
-    cmd.Parameters.AddWithValue("@nit", (object?)dto.nit ?? DBNull.Value);
-    cmd.Parameters.AddWithValue("@dir", (object?)dto.direccion ?? DBNull.Value);
-    cmd.Parameters.AddWithValue("@coord", (object?)dto.coordenadas ?? DBNull.Value);
-    cmd.Parameters.AddWithValue("@mail", (object?)dto.correo ?? DBNull.Value);
-    cmd.Parameters.AddWithValue("@act", dto.activo);
+            cmd.Parameters.AddWithValue("@id", id);
+            cmd.Parameters.AddWithValue("@n", dto.nombre);
+            cmd.Parameters.AddWithValue("@nit", (object?)dto.nit ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@dir", (object?)dto.direccion ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@coord", (object?)dto.coordenadas ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@mail", (object?)dto.correo ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@act", dto.activo);
 
-    var rows = await cmd.ExecuteNonQueryAsync();
-    return rows > 0 ? Results.Ok(new { message = "Cliente actualizado" }) : Results.NotFound();
-});
+            var rows = await cmd.ExecuteNonQueryAsync();
+            return rows > 0 ? Results.Ok(new { message = "Cliente actualizado" }) : Results.NotFound();
+        });
 
-// DELETE /api/clientes/{id} (ADMINISTRADOR) → inactivar
-app.MapDelete("/api/clientes/{id:int}", async (int id, HttpRequest request) =>
-{
-    var rol = request.Headers["rol"].ToString().ToUpper();
-    if (rol != "ADMINISTRADOR") return Results.Unauthorized();
-
-    using var con = new SqlConnection(builder.Configuration.GetConnectionString("DefaultConnection"));
-    await con.OpenAsync();
-
-    var cmd = new SqlCommand("UPDATE TBL_CLIENTES SET activo=0 WHERE id_cliente=@id", con);
-    cmd.Parameters.AddWithValue("@id", id);
-
-    var rows = await cmd.ExecuteNonQueryAsync();
-    return rows > 0 ? Results.Ok(new { message = "Cliente inactivado" }) : Results.NotFound();
-});
-app.MapGet("/api/visitas/form-data", async (HttpRequest request) =>
-{
-    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-    string supId = request.Query["supervisorId"]; // opcional
-
-    using var cn = new SqlConnection(connectionString);
-    await cn.OpenAsync();
-
-    // Clientes
-    var clientes = new List<object>();
-    using (var cmd = new SqlCommand(@"SELECT id_cliente, nombre, direccion, coordenadas FROM TBL_CLIENTES WHERE activo = 1 ORDER BY nombre", cn))
-    using (var rd = await cmd.ExecuteReaderAsync())
-    {
-        while (await rd.ReadAsync())
+        // DELETE /api/clientes/{id} (ADMINISTRADOR) → inactivar
+        app.MapDelete("/api/clientes/{id:int}", async (int id, HttpRequest request) =>
         {
-            clientes.Add(new {
-                id_cliente = rd.GetInt32(0),
-                nombre = rd.GetString(1),
-                direccion = rd.IsDBNull(2) ? null : rd.GetString(2),
-                coordenadas = rd.IsDBNull(3) ? null : rd.GetString(3)
-            });
-        }
-    }
+            var rol = request.Headers["rol"].ToString().ToUpper();
+            if (rol != "ADMINISTRADOR") return Results.Unauthorized();
 
-    // Supervisores
-    var supervisores = new List<object>();
-    using (var cmd = new SqlCommand(@"
+            using var con = new SqlConnection(builder.Configuration.GetConnectionString("DefaultConnection"));
+            await con.OpenAsync();
+
+            var cmd = new SqlCommand("UPDATE TBL_CLIENTES SET activo=0 WHERE id_cliente=@id", con);
+            cmd.Parameters.AddWithValue("@id", id);
+
+            var rows = await cmd.ExecuteNonQueryAsync();
+            return rows > 0 ? Results.Ok(new { message = "Cliente inactivado" }) : Results.NotFound();
+        });
+        app.MapGet("/api/visitas/form-data", async (HttpRequest request) =>
+        {
+            var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+            string supId = request.Query["supervisorId"]; // opcional
+
+            using var cn = new SqlConnection(connectionString);
+            await cn.OpenAsync();
+
+            // Clientes
+            var clientes = new List<object>();
+            using (var cmd = new SqlCommand(@"SELECT id_cliente, nombre, direccion, coordenadas FROM TBL_CLIENTES WHERE activo = 1 ORDER BY nombre", cn))
+            using (var rd = await cmd.ExecuteReaderAsync())
+            {
+                while (await rd.ReadAsync())
+                {
+                    clientes.Add(new
+                    {
+                        id_cliente = rd.GetInt32(0),
+                        nombre = rd.GetString(1),
+                        direccion = rd.IsDBNull(2) ? null : rd.GetString(2),
+                        coordenadas = rd.IsDBNull(3) ? null : rd.GetString(3)
+                    });
+                }
+            }
+
+            // Supervisores
+            var supervisores = new List<object>();
+            using (var cmd = new SqlCommand(@"
         SELECT IU.id_usuario, U.usuario, IU.nombre
         FROM TBL_INFO_USUARIO IU
         INNER JOIN TBL_USUARIO U ON U.id_usuario = IU.id_usuario
         INNER JOIN TBL_ROL R ON R.id_rol = U.id_rol
         WHERE R.descripcion = 'SUPERVISOR' AND U.activo = 1
         ORDER BY IU.nombre", cn))
-    using (var rd = await cmd.ExecuteReaderAsync())
-    {
-        while (await rd.ReadAsync())
-        {
-            supervisores.Add(new {
-                id_usuario = rd.GetInt32(0),
-                usuario = rd.GetString(1),
-                nombre = rd.GetString(2)
-            });
-        }
-    }
+            using (var rd = await cmd.ExecuteReaderAsync())
+            {
+                while (await rd.ReadAsync())
+                {
+                    supervisores.Add(new
+                    {
+                        id_usuario = rd.GetInt32(0),
+                        usuario = rd.GetString(1),
+                        nombre = rd.GetString(2)
+                    });
+                }
+            }
 
-    // Técnicos (si hay supervisorId, filtrar por relación)
-    var tecnicos = new List<object>();
-    string qTec = @"
+            // Técnicos (si hay supervisorId, filtrar por relación)
+            var tecnicos = new List<object>();
+            string qTec = @"
         SELECT IU.id_usuario, U.usuario, IU.nombre
         FROM TBL_INFO_USUARIO IU
         INNER JOIN TBL_USUARIO U ON U.id_usuario = IU.id_usuario
@@ -798,47 +814,51 @@ app.MapGet("/api/visitas/form-data", async (HttpRequest request) =>
         WHERE R.descripcion = 'TECNICO' AND U.activo = 1
         ORDER BY IU.nombre";
 
-    if (!string.IsNullOrWhiteSpace(supId))
-    {
-        qTec = @"
+            if (!string.IsNullOrWhiteSpace(supId))
+            {
+                qTec = @"
         SELECT IU.id_usuario, U.usuario, IU.nombre
         FROM TBL_SUPERVISOR_TECNICO ST
         INNER JOIN TBL_USUARIO U ON U.id_usuario = ST.id_tecnico
         INNER JOIN TBL_INFO_USUARIO IU ON IU.id_usuario = U.id_usuario
         WHERE ST.id_supervisor = @idSup AND U.activo = 1
         ORDER BY IU.nombre";
-    }
+            }
 
-    using (var cmd = new SqlCommand(qTec, cn))
-    {
-        if (!string.IsNullOrWhiteSpace(supId)) cmd.Parameters.AddWithValue("@idSup", int.Parse(supId));
-        using var rd = await cmd.ExecuteReaderAsync();
-        while (await rd.ReadAsync())
-        {
-            tecnicos.Add(new {
-                id_usuario = rd.GetInt32(0),
-                usuario = rd.GetString(1),
-                nombre = rd.GetString(2)
+            using (var cmd = new SqlCommand(qTec, cn))
+            {
+                if (!string.IsNullOrWhiteSpace(supId)) cmd.Parameters.AddWithValue("@idSup", int.Parse(supId));
+                using var rd = await cmd.ExecuteReaderAsync();
+                while (await rd.ReadAsync())
+                {
+                    tecnicos.Add(new
+                    {
+                        id_usuario = rd.GetInt32(0),
+                        usuario = rd.GetString(1),
+                        nombre = rd.GetString(2)
+                    });
+                }
+            }
+
+            return Results.Ok(new
+            {
+                clientes,
+                supervisores,
+                tecnicos
             });
-        }
-    }
+        });
+        app.MapGet("/api/visitas", async (HttpRequest request) =>
+        {
+            var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 
-    return Results.Ok(new {
-        clientes, supervisores, tecnicos
-    });
-});
-app.MapGet("/api/visitas", async (HttpRequest request) =>
-{
-    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+            string rol = request.Headers["rol"].ToString().ToUpper(); // ADMIN / SUP / TEC
+            int idUsuario = int.Parse(request.Headers["id_usuario"]); // ID del usuario logueado
 
-    string rol = request.Headers["rol"].ToString().ToUpper(); // ADMIN / SUP / TEC
-    int idUsuario = int.Parse(request.Headers["id_usuario"]); // ID del usuario logueado
+            var list = new List<object>();
+            using var cn = new SqlConnection(connectionString);
+            await cn.OpenAsync();
 
-    var list = new List<object>();
-    using var cn = new SqlConnection(connectionString);
-    await cn.OpenAsync();
-
-    var q = @"
+            var q = @"
     SELECT 
       V.id_visita,
       V.id_cliente,
@@ -860,454 +880,458 @@ app.MapGet("/api/visitas", async (HttpRequest request) =>
     /**WHERE_CLAUSE**/
     ORDER BY V.id_visita DESC";
 
-    string where = "";
+            string where = "";
 
-    if (rol == "SUP") // Supervisor → solo visitas de sus técnicos asignados
-    {
-        where = @"
+            if (rol == "SUP") // Supervisor → solo visitas de sus técnicos asignados
+            {
+                where = @"
         WHERE V.id_tecnico IN (
             SELECT id_tecnico 
             FROM TBL_SUPERVISOR_TECNICO 
             WHERE id_supervisor = @idUsuario
         )";
-    }
-    else if (rol == "TEC") // Técnico → solo sus visitas
-    {
-        where = "WHERE V.id_tecnico = @idUsuario";
-    }
+            }
+            else if (rol == "TEC") // Técnico → solo sus visitas
+            {
+                where = "WHERE V.id_tecnico = @idUsuario";
+            }
 
-    q = q.Replace("/**WHERE_CLAUSE**/", where);
+            q = q.Replace("/**WHERE_CLAUSE**/", where);
 
-    using var cmd = new SqlCommand(q, cn);
-    cmd.Parameters.AddWithValue("@idUsuario", idUsuario);
+            using var cmd = new SqlCommand(q, cn);
+            cmd.Parameters.AddWithValue("@idUsuario", idUsuario);
 
-    using var rd = await cmd.ExecuteReaderAsync();
-    while (await rd.ReadAsync())
-    {
-        list.Add(new
-        {
-            id_visita = rd.GetInt32(0),
-            id_cliente = rd.GetInt32(1),
-            id_supervisor = rd.GetInt32(2),
-            id_tecnico = rd.GetInt32(3),
-            fecha_creacion = rd.GetDateTime(4).ToString("yyyy-MM-dd HH:mm:ss"),
-            fecha_visita = rd.GetDateTime(5).ToString("yyyy-MM-dd"),
-            estado = rd.GetString(6),
-            coordenadas_planificadas = rd.IsDBNull(7) ? null : rd.GetString(7),
-            cliente = rd.GetString(8),
-            cliente_direccion = rd.IsDBNull(9) ? null : rd.GetString(9),
-            cliente_coordenadas = rd.IsDBNull(10) ? null : rd.GetString(10),
-            supervisor = rd.GetString(11),
-            tecnico = rd.GetString(12)
+            using var rd = await cmd.ExecuteReaderAsync();
+            while (await rd.ReadAsync())
+            {
+                list.Add(new
+                {
+                    id_visita = rd.GetInt32(0),
+                    id_cliente = rd.GetInt32(1),
+                    id_supervisor = rd.GetInt32(2),
+                    id_tecnico = rd.GetInt32(3),
+                    fecha_creacion = rd.GetDateTime(4).ToString("yyyy-MM-dd HH:mm:ss"),
+                    fecha_visita = rd.GetDateTime(5).ToString("yyyy-MM-dd"),
+                    estado = rd.GetString(6),
+                    coordenadas_planificadas = rd.IsDBNull(7) ? null : rd.GetString(7),
+                    cliente = rd.GetString(8),
+                    cliente_direccion = rd.IsDBNull(9) ? null : rd.GetString(9),
+                    cliente_coordenadas = rd.IsDBNull(10) ? null : rd.GetString(10),
+                    supervisor = rd.GetString(11),
+                    tecnico = rd.GetString(12)
+                });
+            }
+
+            return Results.Ok(list);
         });
-    }
-
-    return Results.Ok(list);
-});
 
 
-app.MapPost("/api/visitas", async (VisitaCreateDto dto) =>
-{
-    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+        app.MapPost("/api/visitas", async (VisitaCreateDto dto) =>
+        {
+            var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 
-    using var cn = new SqlConnection(connectionString);
-    await cn.OpenAsync();
+            using var cn = new SqlConnection(connectionString);
+            await cn.OpenAsync();
 
-    // Insertar visita
-    var qIns = @"
+            // Insertar visita
+            var qIns = @"
       INSERT INTO TBL_VISITA (id_cliente, id_supervisor, id_tecnico, coordenadas_planificadas, fecha_visita)
       OUTPUT INSERTED.id_visita
       VALUES (@c, @s, @t, @coord, @f)";
 
-    int idVisita;
-    using (var cmd = new SqlCommand(qIns, cn))
-    {
-        cmd.Parameters.AddWithValue("@c", dto.id_cliente);
-        cmd.Parameters.AddWithValue("@s", dto.id_supervisor);
-        cmd.Parameters.AddWithValue("@t", dto.id_tecnico);
-        cmd.Parameters.AddWithValue("@coord", dto.coordenadas_planificadas ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@f", DateTime.Parse(dto.fecha_visita));
-        idVisita = (int)await cmd.ExecuteScalarAsync();
-    }
+            int idVisita;
+            using (var cmd = new SqlCommand(qIns, cn))
+            {
+                cmd.Parameters.AddWithValue("@c", dto.id_cliente);
+                cmd.Parameters.AddWithValue("@s", dto.id_supervisor);
+                cmd.Parameters.AddWithValue("@t", dto.id_tecnico);
+                cmd.Parameters.AddWithValue("@coord", dto.coordenadas_planificadas ?? (object)DBNull.Value);
+                cmd.Parameters.AddWithValue("@f", DateTime.Parse(dto.fecha_visita));
+                idVisita = (int)await cmd.ExecuteScalarAsync();
+            }
 
-    // Obtener info para correo
-    string clienteNom = "", clienteDir = "", clienteCoord = "", clienteMail = "";
-    string tecnicoNom = "", tecnicoMail = "";
+            // Obtener info para correo
+            string clienteNom = "", clienteDir = "", clienteCoord = "", clienteMail = "";
+            string tecnicoNom = "", tecnicoMail = "";
 
-    // Cliente
-    using (var cmd = new SqlCommand(@"
+            // Cliente
+            using (var cmd = new SqlCommand(@"
         SELECT nombre, direccion, coordenadas, correo
         FROM TBL_CLIENTES WHERE id_cliente=@c", cn))
-    {
-        cmd.Parameters.AddWithValue("@c", dto.id_cliente);
-        using var rd = await cmd.ExecuteReaderAsync();
-        if (await rd.ReadAsync())
-        {
-            clienteNom = rd.GetString(0);
-            clienteDir = rd.IsDBNull(1) ? "" : rd.GetString(1);
-            clienteCoord = rd.IsDBNull(2) ? "" : rd.GetString(2);
-            clienteMail = rd.IsDBNull(3) ? "" : rd.GetString(3);
-        }
-    }
+            {
+                cmd.Parameters.AddWithValue("@c", dto.id_cliente);
+                using var rd = await cmd.ExecuteReaderAsync();
+                if (await rd.ReadAsync())
+                {
+                    clienteNom = rd.GetString(0);
+                    clienteDir = rd.IsDBNull(1) ? "" : rd.GetString(1);
+                    clienteCoord = rd.IsDBNull(2) ? "" : rd.GetString(2);
+                    clienteMail = rd.IsDBNull(3) ? "" : rd.GetString(3);
+                }
+            }
 
-    // Técnico
-    using (var cmd = new SqlCommand(@"
+            // Técnico
+            using (var cmd = new SqlCommand(@"
         SELECT IU.nombre, IU.correo
         FROM TBL_INFO_USUARIO IU
         INNER JOIN TBL_USUARIO U ON U.id_usuario = IU.id_usuario
         WHERE U.id_usuario=@t", cn))
-    {
-        cmd.Parameters.AddWithValue("@t", dto.id_tecnico);
-        using var rd = await cmd.ExecuteReaderAsync();
-        if (await rd.ReadAsync())
+            {
+                cmd.Parameters.AddWithValue("@t", dto.id_tecnico);
+                using var rd = await cmd.ExecuteReaderAsync();
+                if (await rd.ReadAsync())
+                {
+                    tecnicoNom = rd.GetString(0);
+                    tecnicoMail = rd.IsDBNull(1) ? "" : rd.GetString(1);
+                }
+            }
+
+            // ✅ Enviar correos de forma asíncrona
+            Task.Run(() =>
+            {
+                try
+                {
+                    var emailService = new SkynetApiAuth.Services.EmailService();
+                    emailService.SendVisitaAsignadaEmails(
+                        clienteMail,      // correo del cliente
+                        tecnicoMail,      // correo del técnico
+                        clienteNom,       // nombre del cliente
+                        clienteDir,       // dirección
+                        clienteCoord,     // coordenadas
+                        tecnicoNom,       // nombre técnico
+                        dto.fecha_visita  // fecha visita
+                    );
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("Error async email visita: " + ex.Message);
+                }
+            });
+
+            return Results.Ok(new { message = "Visita creada", id_visita = idVisita });
+        });
+
+        app.MapPut("/api/visitas/{id:int}", async (int id, VisitaUpdateDto dto) =>
         {
-            tecnicoNom = rd.GetString(0);
-            tecnicoMail = rd.IsDBNull(1) ? "" : rd.GetString(1);
-        }
-    }
+            var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 
-    // ✅ Enviar correos de forma asíncrona
-    Task.Run(() =>
-    {
-        try
-        {
-            var emailService = new SkynetApiAuth.Services.EmailService();
-            emailService.SendVisitaAsignadaEmails(
-                clienteMail,      // correo del cliente
-                tecnicoMail,      // correo del técnico
-                clienteNom,       // nombre del cliente
-                clienteDir,       // dirección
-                clienteCoord,     // coordenadas
-                tecnicoNom,       // nombre técnico
-                dto.fecha_visita  // fecha visita
-            );
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine("Error async email visita: " + ex.Message);
-        }
-    });
+            using var cn = new SqlConnection(connectionString);
+            await cn.OpenAsync();
 
-    return Results.Ok(new { message = "Visita creada", id_visita = idVisita });
-});
+            int oldTec = 0;
+            using (var cmd = new SqlCommand("SELECT id_tecnico FROM TBL_VISITA WHERE id_visita=@id", cn))
+            {
+                cmd.Parameters.AddWithValue("@id", id);
+                var obj = await cmd.ExecuteScalarAsync();
+                if (obj == null) return Results.NotFound(new { message = "Visita no encontrada" });
+                oldTec = Convert.ToInt32(obj);
+            }
 
-app.MapPut("/api/visitas/{id:int}", async (int id, VisitaUpdateDto dto) =>
-{
-    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-
-    using var cn = new SqlConnection(connectionString);
-    await cn.OpenAsync();
-
-    int oldTec = 0;
-    using (var cmd = new SqlCommand("SELECT id_tecnico FROM TBL_VISITA WHERE id_visita=@id", cn))
-    {
-        cmd.Parameters.AddWithValue("@id", id);
-        var obj = await cmd.ExecuteScalarAsync();
-        if (obj == null) return Results.NotFound(new { message="Visita no encontrada" });
-        oldTec = Convert.ToInt32(obj);
-    }
-
-    var qUp = @"
+            var qUp = @"
       UPDATE TBL_VISITA
       SET id_cliente=@c, id_supervisor=@s, id_tecnico=@t, fecha_visita=@f, coordenadas_planificadas=@coord
       WHERE id_visita=@id";
-    using (var cmd = new SqlCommand(qUp, cn))
-    {
-        cmd.Parameters.AddWithValue("@c", dto.id_cliente);
-        cmd.Parameters.AddWithValue("@s", dto.id_supervisor);
-        cmd.Parameters.AddWithValue("@t", dto.id_tecnico);
-        cmd.Parameters.AddWithValue("@f", DateTime.Parse(dto.fecha_visita));
-        cmd.Parameters.AddWithValue("@coord", dto.coordenadas_planificadas);
-        cmd.Parameters.AddWithValue("@id", id);
-        await cmd.ExecuteNonQueryAsync();
-    }
+            using (var cmd = new SqlCommand(qUp, cn))
+            {
+                cmd.Parameters.AddWithValue("@c", dto.id_cliente);
+                cmd.Parameters.AddWithValue("@s", dto.id_supervisor);
+                cmd.Parameters.AddWithValue("@t", dto.id_tecnico);
+                cmd.Parameters.AddWithValue("@f", DateTime.Parse(dto.fecha_visita));
+                cmd.Parameters.AddWithValue("@coord", dto.coordenadas_planificadas);
+                cmd.Parameters.AddWithValue("@id", id);
+                await cmd.ExecuteNonQueryAsync();
+            }
 
-    if (dto.id_tecnico != oldTec)
-    {
-        // reenvía SOLO al nuevo técnico
-        string clienteNom="", clienteDir="", clienteCoord="";
-        string tecnicoNom="", tecnicoUser="", tecnicoMail="";
-        using (var cmd = new SqlCommand(@"
+            if (dto.id_tecnico != oldTec)
+            {
+                // reenvía SOLO al nuevo técnico
+                string clienteNom = "", clienteDir = "", clienteCoord = "";
+                string tecnicoNom = "", tecnicoUser = "", tecnicoMail = "";
+                using (var cmd = new SqlCommand(@"
             SELECT C.nombre, C.direccion, C.coordenadas
             FROM TBL_CLIENTES C WHERE C.id_cliente=@c", cn))
-        {
-            cmd.Parameters.AddWithValue("@c", dto.id_cliente);
-            using var rd = await cmd.ExecuteReaderAsync();
-            if (await rd.ReadAsync())
-            {
-                clienteNom = rd.GetString(0);
-                clienteDir = rd.IsDBNull(1) ? "" : rd.GetString(1);
-                clienteCoord = rd.IsDBNull(2) ? "" : rd.GetString(2);
-            }
-        }
-        using (var cmd = new SqlCommand(@"
+                {
+                    cmd.Parameters.AddWithValue("@c", dto.id_cliente);
+                    using var rd = await cmd.ExecuteReaderAsync();
+                    if (await rd.ReadAsync())
+                    {
+                        clienteNom = rd.GetString(0);
+                        clienteDir = rd.IsDBNull(1) ? "" : rd.GetString(1);
+                        clienteCoord = rd.IsDBNull(2) ? "" : rd.GetString(2);
+                    }
+                }
+                using (var cmd = new SqlCommand(@"
             SELECT IU.nombre, U.usuario, IU.correo
             FROM TBL_INFO_USUARIO IU
             INNER JOIN TBL_USUARIO U ON U.id_usuario = IU.id_usuario
             WHERE U.id_usuario=@t", cn))
-        {
-            cmd.Parameters.AddWithValue("@t", dto.id_tecnico);
-            using var rd = await cmd.ExecuteReaderAsync();
-            if (await rd.ReadAsync())
-            {
-                tecnicoNom = rd.GetString(0);
-                tecnicoUser = rd.GetString(1);
-                tecnicoMail = rd.IsDBNull(2) ? "" : rd.GetString(2);
+                {
+                    cmd.Parameters.AddWithValue("@t", dto.id_tecnico);
+                    using var rd = await cmd.ExecuteReaderAsync();
+                    if (await rd.ReadAsync())
+                    {
+                        tecnicoNom = rd.GetString(0);
+                        tecnicoUser = rd.GetString(1);
+                        tecnicoMail = rd.IsDBNull(2) ? "" : rd.GetString(2);
+                    }
+                }
+
+                await EmailService.SendAvisoTecnicoReasignado(cn, new EmailVisitaData
+                {
+                    IdVisita = id,
+                    ClienteNombre = clienteNom,
+                    ClienteDireccion = clienteDir,
+                    ClienteCoordenadas = clienteCoord,
+                    TecnicoNombre = tecnicoNom,
+                    TecnicoUsuario = tecnicoUser,
+                    TecnicoEmail = tecnicoMail,
+                    FechaVisita = DateTime.Parse(dto.fecha_visita),
+                    CoordenadasPlan = dto.coordenadas_planificadas
+                });
             }
-        }
 
-        await EmailService.SendAvisoTecnicoReasignado(cn, new EmailVisitaData{
-            IdVisita = id,
-            ClienteNombre = clienteNom,
-            ClienteDireccion = clienteDir,
-            ClienteCoordenadas = clienteCoord,
-            TecnicoNombre = tecnicoNom,
-            TecnicoUsuario = tecnicoUser,
-            TecnicoEmail = tecnicoMail,
-            FechaVisita = DateTime.Parse(dto.fecha_visita),
-            CoordenadasPlan = dto.coordenadas_planificadas
+            return Results.Ok(new { message = "Visita actualizada" });
         });
-    }
-
-    return Results.Ok(new { message="Visita actualizada" });
-});
 
 
-app.MapGet("/api/usuarios/{id:int}/asignaciones", async (int id) =>
-{
-    var cs = builder.Configuration.GetConnectionString("DefaultConnection");
+        app.MapGet("/api/usuarios/{id:int}/asignaciones", async (int id) =>
+        {
+            var cs = builder.Configuration.GetConnectionString("DefaultConnection");
 
-    using var cn = new SqlConnection(cs);
-    await cn.OpenAsync();
+            using var cn = new SqlConnection(cs);
+            await cn.OpenAsync();
 
-    // Rol del usuario objetivo
-    string tipo = "OTRO";
-    using (var cmd = new SqlCommand(@"
+            // Rol del usuario objetivo
+            string tipo = "OTRO";
+            using (var cmd = new SqlCommand(@"
         SELECT TOP 1 R.descripcion
         FROM TBL_USUARIO U
         INNER JOIN TBL_ROL R ON R.id_rol = U.id_rol
         WHERE U.id_usuario = @id", cn))
-    {
-        cmd.Parameters.AddWithValue("@id", id);
-        var rol = (string?)await cmd.ExecuteScalarAsync();
-        if (!string.IsNullOrWhiteSpace(rol)) tipo = rol.ToUpper();
-    }
+            {
+                cmd.Parameters.AddWithValue("@id", id);
+                var rol = (string?)await cmd.ExecuteScalarAsync();
+                if (!string.IsNullOrWhiteSpace(rol)) tipo = rol.ToUpper();
+            }
 
-    if (tipo == "SUPERVISOR")
-    {
-        // Técnicos asignados a este supervisor
-        var list = new List<int>();
-        using var cmd = new SqlCommand(@"
+            if (tipo == "SUPERVISOR")
+            {
+                // Técnicos asignados a este supervisor
+                var list = new List<int>();
+                using var cmd = new SqlCommand(@"
             SELECT id_tecnico
             FROM TBL_SUPERVISOR_TECNICO
             WHERE id_supervisor=@id
             ORDER BY id_tecnico", cn);
-        cmd.Parameters.AddWithValue("@id", id);
-        using var rd = await cmd.ExecuteReaderAsync();
-        while (await rd.ReadAsync()) list.Add(rd.GetInt32(0));
+                cmd.Parameters.AddWithValue("@id", id);
+                using var rd = await cmd.ExecuteReaderAsync();
+                while (await rd.ReadAsync()) list.Add(rd.GetInt32(0));
 
-        return Results.Ok(new {
-            tipo = "SUPERVISOR",
-            tecnicos_asignados = list,
-            supervisor_asignado = (int?)null
-        });
-    }
-    else if (tipo == "TECNICO")
-    {
-        // Supervisor del técnico (si existe)
-        int? sup = null;
-        using var cmd = new SqlCommand(@"
+                return Results.Ok(new
+                {
+                    tipo = "SUPERVISOR",
+                    tecnicos_asignados = list,
+                    supervisor_asignado = (int?)null
+                });
+            }
+            else if (tipo == "TECNICO")
+            {
+                // Supervisor del técnico (si existe)
+                int? sup = null;
+                using var cmd = new SqlCommand(@"
             SELECT TOP 1 id_supervisor
             FROM TBL_SUPERVISOR_TECNICO
             WHERE id_tecnico=@id", cn);
-        cmd.Parameters.AddWithValue("@id", id);
-        var obj = await cmd.ExecuteScalarAsync();
-        if (obj != null && obj != DBNull.Value) sup = Convert.ToInt32(obj);
+                cmd.Parameters.AddWithValue("@id", id);
+                var obj = await cmd.ExecuteScalarAsync();
+                if (obj != null && obj != DBNull.Value) sup = Convert.ToInt32(obj);
 
-        return Results.Ok(new {
-            tipo = "TECNICO",
-            tecnicos_asignados = Array.Empty<int>(),
-            supervisor_asignado = sup
+                return Results.Ok(new
+                {
+                    tipo = "TECNICO",
+                    tecnicos_asignados = Array.Empty<int>(),
+                    supervisor_asignado = sup
+                });
+            }
+
+            return Results.Ok(new
+            {
+                tipo = "OTRO",
+                tecnicos_asignados = Array.Empty<int>(),
+                supervisor_asignado = (int?)null
+            });
         });
-    }
 
-    return Results.Ok(new {
-        tipo = "OTRO",
-        tecnicos_asignados = Array.Empty<int>(),
-        supervisor_asignado = (int?)null
-    });
-});
+        // PUT /api/usuarios/{id}/asignaciones
+        // Solo ADMIN puede modificar.
+        // Payload según tipo:
+        //  - SUPERVISOR: { "tecnicos": [1,2,3] }
+        //  - TECNICO:    { "id_supervisor": 10 }
+        app.MapPut("/api/usuarios/{id:int}/asignaciones", async (int id, HttpRequest req) =>
+        {
+            var cs = builder.Configuration.GetConnectionString("DefaultConnection");
 
-// PUT /api/usuarios/{id}/asignaciones
-// Solo ADMIN puede modificar.
-// Payload según tipo:
-//  - SUPERVISOR: { "tecnicos": [1,2,3] }
-//  - TECNICO:    { "id_supervisor": 10 }
-app.MapPut("/api/usuarios/{id:int}/asignaciones", async (int id, HttpRequest req) =>
-{
-    var cs = builder.Configuration.GetConnectionString("DefaultConnection");
+            // Acepta tanto código como nombre
+            var rolHdr = (req.Headers["rol"].ToString() ?? "").ToUpper();
+            var rolNombreHdr = (req.Headers["rol_nombre"].ToString() ?? "").ToUpper();
 
-    // Acepta tanto código como nombre
-    var rolHdr = (req.Headers["rol"].ToString() ?? "").ToUpper();
-    var rolNombreHdr = (req.Headers["rol_nombre"].ToString() ?? "").ToUpper();
+            bool isAdmin =
+                rolHdr == "ADMIN" ||
+                rolNombreHdr == "ADMINISTRADOR";
 
-    bool isAdmin =
-        rolHdr == "ADMIN" ||
-        rolNombreHdr == "ADMINISTRADOR";
+            if (!isAdmin)
+                return Results.Unauthorized();
 
-    if (!isAdmin)
-        return Results.Unauthorized();
+            using var cn = new SqlConnection(cs);
+            await cn.OpenAsync();
 
-    using var cn = new SqlConnection(cs);
-    await cn.OpenAsync();
-
-    // Tipo del usuario objetivo
-    string tipo = "OTRO";
-    using (var cmd = new SqlCommand(@"
+            // Tipo del usuario objetivo
+            string tipo = "OTRO";
+            using (var cmd = new SqlCommand(@"
         SELECT TOP 1 R.descripcion
         FROM TBL_USUARIO U
         INNER JOIN TBL_ROL R ON R.id_rol = U.id_rol
         WHERE U.id_usuario = @id", cn))
-    {
-        cmd.Parameters.AddWithValue("@id", id);
-        var rol = (string?)await cmd.ExecuteScalarAsync();
-        if (!string.IsNullOrWhiteSpace(rol)) tipo = rol.ToUpper();
-    }
-
-    using var sr = new StreamReader(req.Body);
-    var body = await sr.ReadToEndAsync();
-    using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
-    var root = doc.RootElement;
-
-    if (tipo == "SUPERVISOR")
-    {
-        // Reemplazo total de técnicos asignados
-        var tec = new List<int>();
-        if (root.TryGetProperty("tecnicos", out var arr) && arr.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var x in arr.EnumerateArray())
-                if (x.ValueKind == JsonValueKind.Number) tec.Add(x.GetInt32());
-        }
-
-        using var tx = cn.BeginTransaction();
-
-        // Borra asignaciones actuales
-        using (var del = new SqlCommand(@"DELETE FROM TBL_SUPERVISOR_TECNICO WHERE id_supervisor=@s", cn, tx))
-        {
-            del.Parameters.AddWithValue("@s", id);
-            await del.ExecuteNonQueryAsync();
-        }
-
-        // Inserta nuevas
-        if (tec.Count > 0)
-        {
-            foreach (var t in tec.Distinct())
             {
-                using var ins = new SqlCommand(@"
+                cmd.Parameters.AddWithValue("@id", id);
+                var rol = (string?)await cmd.ExecuteScalarAsync();
+                if (!string.IsNullOrWhiteSpace(rol)) tipo = rol.ToUpper();
+            }
+
+            using var sr = new StreamReader(req.Body);
+            var body = await sr.ReadToEndAsync();
+            using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
+            var root = doc.RootElement;
+
+            if (tipo == "SUPERVISOR")
+            {
+                // Reemplazo total de técnicos asignados
+                var tec = new List<int>();
+                if (root.TryGetProperty("tecnicos", out var arr) && arr.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var x in arr.EnumerateArray())
+                        if (x.ValueKind == JsonValueKind.Number) tec.Add(x.GetInt32());
+                }
+
+                using var tx = cn.BeginTransaction();
+
+                // Borra asignaciones actuales
+                using (var del = new SqlCommand(@"DELETE FROM TBL_SUPERVISOR_TECNICO WHERE id_supervisor=@s", cn, tx))
+                {
+                    del.Parameters.AddWithValue("@s", id);
+                    await del.ExecuteNonQueryAsync();
+                }
+
+                // Inserta nuevas
+                if (tec.Count > 0)
+                {
+                    foreach (var t in tec.Distinct())
+                    {
+                        using var ins = new SqlCommand(@"
                     INSERT INTO TBL_SUPERVISOR_TECNICO (id_supervisor, id_tecnico)
                     VALUES (@s, @t)", cn, tx);
-                ins.Parameters.AddWithValue("@s", id);
-                ins.Parameters.AddWithValue("@t", t);
-                await ins.ExecuteNonQueryAsync();
+                        ins.Parameters.AddWithValue("@s", id);
+                        ins.Parameters.AddWithValue("@t", t);
+                        await ins.ExecuteNonQueryAsync();
+                    }
+                }
+
+                await tx.CommitAsync();
+                return Results.Ok(new { message = "Asignaciones actualizadas (supervisor→técnicos)" });
             }
-        }
+            else if (tipo == "TECNICO")
+            {
+                // Upsert de su supervisor
+                int? idSup = null;
+                if (root.TryGetProperty("id_supervisor", out var supEl) && supEl.ValueKind == JsonValueKind.Number)
+                    idSup = supEl.GetInt32();
 
-        await tx.CommitAsync();
-        return Results.Ok(new { message = "Asignaciones actualizadas (supervisor→técnicos)" });
-    }
-    else if (tipo == "TECNICO")
-    {
-        // Upsert de su supervisor
-        int? idSup = null;
-        if (root.TryGetProperty("id_supervisor", out var supEl) && supEl.ValueKind == JsonValueKind.Number)
-            idSup = supEl.GetInt32();
+                using var tx = cn.BeginTransaction();
 
-        using var tx = cn.BeginTransaction();
+                // Si no hay supervisor → elimina relación
+                if (idSup is null)
+                {
+                    using var del = new SqlCommand(@"DELETE FROM TBL_SUPERVISOR_TECNICO WHERE id_tecnico=@t", cn, tx);
+                    del.Parameters.AddWithValue("@t", id);
+                    await del.ExecuteNonQueryAsync();
+                    await tx.CommitAsync();
+                    return Results.Ok(new { message = "Supervisor desasignado del técnico" });
+                }
 
-        // Si no hay supervisor → elimina relación
-        if (idSup is null)
-        {
-            using var del = new SqlCommand(@"DELETE FROM TBL_SUPERVISOR_TECNICO WHERE id_tecnico=@t", cn, tx);
-            del.Parameters.AddWithValue("@t", id);
-            await del.ExecuteNonQueryAsync();
-            await tx.CommitAsync();
-            return Results.Ok(new { message = "Supervisor desasignado del técnico" });
-        }
+                // Verificar si existe fila
+                int count = 0;
+                using (var chk = new SqlCommand(@"SELECT COUNT(*) FROM TBL_SUPERVISOR_TECNICO WHERE id_tecnico=@t", cn, tx))
+                {
+                    chk.Parameters.AddWithValue("@t", id);
+                    count = Convert.ToInt32(await chk.ExecuteScalarAsync());
+                }
 
-        // Verificar si existe fila
-        int count = 0;
-        using (var chk = new SqlCommand(@"SELECT COUNT(*) FROM TBL_SUPERVISOR_TECNICO WHERE id_tecnico=@t", cn, tx))
-        {
-            chk.Parameters.AddWithValue("@t", id);
-            count = Convert.ToInt32(await chk.ExecuteScalarAsync());
-        }
-
-        if (count > 0)
-        {
-            using var up = new SqlCommand(@"
+                if (count > 0)
+                {
+                    using var up = new SqlCommand(@"
                 UPDATE TBL_SUPERVISOR_TECNICO SET id_supervisor=@s WHERE id_tecnico=@t", cn, tx);
-            up.Parameters.AddWithValue("@s", idSup);
-            up.Parameters.AddWithValue("@t", id);
-            await up.ExecuteNonQueryAsync();
-        }
-        else
-        {
-            using var ins = new SqlCommand(@"
+                    up.Parameters.AddWithValue("@s", idSup);
+                    up.Parameters.AddWithValue("@t", id);
+                    await up.ExecuteNonQueryAsync();
+                }
+                else
+                {
+                    using var ins = new SqlCommand(@"
                 INSERT INTO TBL_SUPERVISOR_TECNICO (id_supervisor, id_tecnico)
                 VALUES (@s, @t)", cn, tx);
-            ins.Parameters.AddWithValue("@s", idSup);
-            ins.Parameters.AddWithValue("@t", id);
-            await ins.ExecuteNonQueryAsync();
-        }
+                    ins.Parameters.AddWithValue("@s", idSup);
+                    ins.Parameters.AddWithValue("@t", id);
+                    await ins.ExecuteNonQueryAsync();
+                }
 
-        await tx.CommitAsync();
-        return Results.Ok(new { message = "Supervisor asignado al técnico" });
-    }
+                await tx.CommitAsync();
+                return Results.Ok(new { message = "Supervisor asignado al técnico" });
+            }
 
-    return Results.BadRequest(new { message = "El usuario indicado no es SUPERVISOR ni TECNICO" });
-});
+            return Results.BadRequest(new { message = "El usuario indicado no es SUPERVISOR ni TECNICO" });
+        });
 
 
-app.MapPut("/api/supervisores/{id:int}/tecnicos", async (int id, HttpRequest request) =>
-{
-    var rol = request.Headers["rol"].ToString().ToUpper();
-    if (rol != "ADMIN" && rol != "ADMINISTRADOR")
-        return Results.Unauthorized();
-
-    var body = await request.ReadFromJsonAsync<AsignarTecnicosDto>();
-    if (body is null)
-        return Results.BadRequest(new { message = "Datos inválidos" });
-
-    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-    using var con = new SqlConnection(connectionString);
-    await con.OpenAsync();
-
-    using var tx = con.BeginTransaction();
-
-    // 1. Borrar asignaciones actuales
-    var del = new SqlCommand("DELETE FROM TBL_SUPERVISOR_TECNICO WHERE id_supervisor = @id", con, tx);
-    del.Parameters.AddWithValue("@id", id);
-    await del.ExecuteNonQueryAsync();
-
-    // 2. Insertar nuevas asignaciones
-    if (body.tecnicos != null && body.tecnicos.Count > 0)
-    {
-        foreach (var tecId in body.tecnicos.Distinct())
+        app.MapPut("/api/supervisores/{id:int}/tecnicos", async (int id, HttpRequest request) =>
         {
-            var ins = new SqlCommand(
-                "INSERT INTO TBL_SUPERVISOR_TECNICO (id_supervisor, id_tecnico) VALUES (@sup, @tec)",
-                con, tx
-            );
-            ins.Parameters.AddWithValue("@sup", id);
-            ins.Parameters.AddWithValue("@tec", tecId);
-            await ins.ExecuteNonQueryAsync();
-        }
-    }
+            var rol = request.Headers["rol"].ToString().ToUpper();
+            if (rol != "ADMIN" && rol != "ADMINISTRADOR")
+                return Results.Unauthorized();
 
-    await tx.CommitAsync();
-    return Results.Ok(new { message = "Asignaciones actualizadas correctamente", total = body.tecnicos?.Count ?? 0 });
-});
-        
+            var body = await request.ReadFromJsonAsync<AsignarTecnicosDto>();
+            if (body is null)
+                return Results.BadRequest(new { message = "Datos inválidos" });
+
+            var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+            using var con = new SqlConnection(connectionString);
+            await con.OpenAsync();
+
+            using var tx = con.BeginTransaction();
+
+            // 1. Borrar asignaciones actuales
+            var del = new SqlCommand("DELETE FROM TBL_SUPERVISOR_TECNICO WHERE id_supervisor = @id", con, tx);
+            del.Parameters.AddWithValue("@id", id);
+            await del.ExecuteNonQueryAsync();
+
+            // 2. Insertar nuevas asignaciones
+            if (body.tecnicos != null && body.tecnicos.Count > 0)
+            {
+                foreach (var tecId in body.tecnicos.Distinct())
+                {
+                    var ins = new SqlCommand(
+                        "INSERT INTO TBL_SUPERVISOR_TECNICO (id_supervisor, id_tecnico) VALUES (@sup, @tec)",
+                        con, tx
+                    );
+                    ins.Parameters.AddWithValue("@sup", id);
+                    ins.Parameters.AddWithValue("@tec", tecId);
+                    await ins.ExecuteNonQueryAsync();
+                }
+            }
+
+            await tx.CommitAsync();
+            return Results.Ok(new { message = "Asignaciones actualizadas correctamente", total = body.tecnicos?.Count ?? 0 });
+        });
+
 
         app.MapPost("/api/visitas/{id:int}/procesar", async (int id, ProcesarVisitaDto dto) =>
 {
@@ -1368,45 +1392,45 @@ app.MapPut("/api/supervisores/{id:int}/tecnicos", async (int id, HttpRequest req
     tx.Commit();
 
     string correoCliente = "";
-string correoSupervisor = "";
-string tecnicoNom = "";
-string fechaAtencion = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-string coordenadasFinales = coordFinal ?? "";
+    string correoSupervisor = "";
+    string tecnicoNom = "";
+    string fechaAtencion = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+    string coordenadasFinales = coordFinal ?? "";
 
-// Obtener correo del cliente
-using (var cmd = new SqlCommand(@"
+    // Obtener correo del cliente
+    using (var cmd = new SqlCommand(@"
     SELECT correo FROM TBL_CLIENTES
     WHERE id_cliente = (SELECT id_cliente FROM TBL_VISITA WHERE id_visita = @id)", cn))
-{
-    cmd.Parameters.AddWithValue("@id", id);
-    var cli = await cmd.ExecuteScalarAsync();
-    correoCliente = cli == null ? "" : cli.ToString()!;
-}
+    {
+        cmd.Parameters.AddWithValue("@id", id);
+        var cli = await cmd.ExecuteScalarAsync();
+        correoCliente = cli == null ? "" : cli.ToString()!;
+    }
 
-// Obtener correo del Supervisor
-using (var cmd = new SqlCommand(@"
+    // Obtener correo del Supervisor
+    using (var cmd = new SqlCommand(@"
     SELECT IU.correo
     FROM TBL_INFO_USUARIO IU
     WHERE IU.id_usuario = (SELECT id_supervisor FROM TBL_VISITA WHERE id_visita = @id)", cn))
-{
-    cmd.Parameters.AddWithValue("@id", id);
-    var sup = await cmd.ExecuteScalarAsync();
-    correoSupervisor = sup == null ? "" : sup.ToString()!;
-}
+    {
+        cmd.Parameters.AddWithValue("@id", id);
+        var sup = await cmd.ExecuteScalarAsync();
+        correoSupervisor = sup == null ? "" : sup.ToString()!;
+    }
 
-// Obtener nombre del Técnico que atendió
-using (var cmd = new SqlCommand(@"
+    // Obtener nombre del Técnico que atendió
+    using (var cmd = new SqlCommand(@"
     SELECT IU.nombre
     FROM TBL_INFO_USUARIO IU
     WHERE IU.id_usuario = (SELECT id_tecnico FROM TBL_VISITA WHERE id_visita = @id)", cn))
-{
-    cmd.Parameters.AddWithValue("@id", id);
-    var tec = await cmd.ExecuteScalarAsync();
-    tecnicoNom = tec == null ? "Técnico" : tec.ToString()!;
-}
+    {
+        cmd.Parameters.AddWithValue("@id", id);
+        var tec = await cmd.ExecuteScalarAsync();
+        tecnicoNom = tec == null ? "Técnico" : tec.ToString()!;
+    }
 
-// PRINT EN CONSOLA
-Console.WriteLine($@"
+    // PRINT EN CONSOLA
+    Console.WriteLine($@"
 ---- Enviando correo de VISITA PROCESADA ----
 Cliente: {correoCliente}
 Supervisor: {correoSupervisor}
@@ -1416,29 +1440,29 @@ Coordenadas Finales: {coordenadasFinales}
 --------------------------------------------------
 ");
 
-try
-{
-    var emailService = app.Services.GetService<SkynetApiAuth.Services.EmailService>();
-    emailService?.SendVisitaProcesadaEmail(
-        correoCliente,
-        correoSupervisor,
-        tecnicoNom,
-        fechaAtencion,
-        coordenadasFinales
-    );
+    try
+    {
+        var emailService = app.Services.GetService<SkynetApiAuth.Services.EmailService>();
+        emailService?.SendVisitaProcesadaEmail(
+            correoCliente,
+            correoSupervisor,
+            tecnicoNom,
+            fechaAtencion,
+            coordenadasFinales
+        );
 
-    Console.WriteLine("✅ Correo enviado correctamente.");
-}
-catch (Exception ex)
-{
-    Console.WriteLine("❌ Error al enviar correo: " + ex.Message);
-}
+        Console.WriteLine("✅ Correo enviado correctamente.");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine("❌ Error al enviar correo: " + ex.Message);
+    }
     return Results.Ok(new { message = "Visita procesada" });
 });
 
 
-app.MapGet("/", () => Results.Ok("✅ API Skynet Auth corriendo en Render"));
-app.MapGet("/ping", () => Results.Ok("pong ✅"));
+        app.MapGet("/", () => Results.Ok("✅ API Skynet Auth corriendo en Render"));
+        app.MapGet("/ping", () => Results.Ok("pong ✅"));
 
         // ================== RUN ==================
         app.Run();
@@ -1453,14 +1477,14 @@ app.MapGet("/ping", () => Results.Ok("pong ✅"));
                 string? correo
             );
 
-            public record ClienteUpdateDto(
-                string nombre,
-                string? nit,
-                string? direccion,
-                string? coordenadas,
-                string? correo,
-                bool activo
-            );
+    public record ClienteUpdateDto(
+        string nombre,
+        string? nit,
+        string? direccion,
+        string? coordenadas,
+        string? correo,
+        bool activo
+    );
 
     // ================== RECORDS & HELPERS ==================
     public record LoginRequest(string usuario, string clave);
@@ -1486,7 +1510,7 @@ app.MapGet("/ping", () => Results.Ok("pong ✅"));
         int? id_supervisor
     );
 
-    
+
 
     public static string HashSHA256(string input)
     {
