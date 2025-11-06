@@ -42,6 +42,10 @@ public class Program
         // ================== AUTH ==================
         app.MapPost("/auth/login", async (LoginRequest login) =>
         {
+
+            try
+             {
+      
             var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 
             using var connection = new SqlConnection(connectionString);
@@ -92,7 +96,13 @@ public class Program
                     });
             }
 
-            return Results.Json(new { message = "Usuario o contraseña incorrectos" }, statusCode: 401);
+                return Results.Json(new { message = "Usuario o contraseña incorrectos" }, statusCode: 401);
+            
+              }
+    catch (Exception ex)
+    {
+        return Results.Problem($"❌ Error al conectar a SQL Server:\n{ex.Message}");
+    }
         });
 
         app.MapPost("/auth/hash", async (HttpRequest request) =>
