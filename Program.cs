@@ -45,24 +45,51 @@ public class Program
         app.UseCors("AllowReactApp");
 
 
-        app.MapGet("/test-db", async () =>
+app.MapGet("/test-db", async () =>
+{
+    var connectionString = Environment.GetEnvironmentVariable("DefaultConnection")
+        ?? builder.Configuration.GetConnectionString("DefaultConnection");
+
+    if (string.IsNullOrWhiteSpace(connectionString))
+        return Results.BadRequest("❌ No se encontró la cadena de conexión.");
+
+    try
     {
-        if (string.IsNullOrWhiteSpace(connectionString))
-            return Results.BadRequest("❌ No se encontró la cadena de conexión.");
+        using var cn = new SqlConnection(connectionString);
+        await cn.OpenAsync();
 
-        try
-        {
-            // Intentar conexión a SQL
-            using var cn = new SqlConnection(connectionString);
-            await cn.OpenAsync();
+        // Probar SELECT
+        var clientes = new List<object>();
+        var cmd = new SqlCommand("SELECT TOP 3 id_cliente, nombre, correo FROM TBL_CLIENTES", cn);
 
-            return Results.Ok("✅ Conexión a SQL Server exitosa");
-        }
-        catch (Exception ex)
+        using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
         {
-            return Results.Problem($"❌ Error al conectar a SQL Server:\n{ex.Message}");
+            clientes.Add(new
+            {
+                id_cliente = reader.GetInt32(0),
+                nombre = reader.GetString(1),
+                correo = reader.IsDBNull(2) ? null : reader.GetString(2)
+            });
         }
-    });
+
+        return Results.Ok(new
+        {
+            message = "✅ Conexión a SQL Server exitosa y SELECT realizado",
+            encontrados = clientes.Count,
+            muestra = clientes
+        });
+    }
+    catch (SqlException ex)
+    {
+        return Results.Problem($"❌ Error SQL al conectar o consultar:\n{ex.Message}");
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"❌ Error inesperado:\n{ex.Message}");
+    }
+});
+
 
 
 
