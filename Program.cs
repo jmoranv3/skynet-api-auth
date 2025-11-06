@@ -43,10 +43,9 @@ public class Program
         app.MapPost("/auth/login", async (LoginRequest login) =>
         {
             var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-            
 
-            // using var connection = new SqlConnection(connectionString);
-            // await connection.OpenAsync();
+            using var connection = new SqlConnection(connectionString);
+            await connection.OpenAsync();
 
             var hashedPassword = HashSHA256(login.clave);
 
