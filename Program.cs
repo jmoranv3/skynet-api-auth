@@ -39,6 +39,19 @@ public class Program
 
         app.UseCors("AllowReactApp");
 
+
+
+
+
+
+
+
+        app.MapGet("/my-ip", (HttpContext ctx) =>
+{
+    var ip = ctx.Connection.RemoteIpAddress?.ToString();
+    return Results.Ok(new { ip });
+});
+
         // ================== AUTH ==================
         app.MapPost("/auth/login", async (HttpContext context, LoginRequest login) =>
 {
