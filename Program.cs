@@ -1294,7 +1294,7 @@ Console.WriteLine($"connectionString");
                                 TU.usuario AS tecnico
                                 FROM TBL_VISITA V
                                 INNER JOIN TBL_CLIENTES C ON C.id_cliente = V.id_cliente
-                                INNER INNER JOIN TBL_USUARIO SU ON SU.id_usuario = V.id_supervisor
+                                INNER JOIN TBL_USUARIO SU ON SU.id_usuario = V.id_supervisor
                                 INNER JOIN TBL_USUARIO TU ON TU.id_usuario = V.id_tecnico
                                 /**WHERE_CLAUSE**/
                                 ORDER BY V.id_visita DESC";
