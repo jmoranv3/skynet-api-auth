@@ -1,5 +1,5 @@
-using System.Net;
-using System.Net.Mail;
+using SendGrid;
+using SendGrid.Helpers.Mail;
 
 namespace SkynetApiAuth.Services
 {
@@ -7,28 +7,27 @@ namespace SkynetApiAuth.Services
     {
         private readonly string _from = "skynetsa2513@gmail.com";
         private readonly string _fromName = "SkyNet System";
-        private readonly string _appPassword = "bfdu bqzf qtle eklf"; // App password Gmail
 
-        private SmtpClient GetSmtp()
+        private SendGridClient GetClient()
         {
-            return new SmtpClient("smtp.gmail.com")
-            {
-                Port = 587,
-                Credentials = new NetworkCredential(_from, _appPassword),
-                EnableSsl = true
-            };
+            var apiKey = Environment.GetEnvironmentVariable("SENDGRID_API_KEY");
+            if (string.IsNullOrWhiteSpace(apiKey))
+                throw new Exception("❌ No se encontró la variable de entorno SENDGRID_API_KEY.");
+
+            return new SendGridClient(apiKey);
         }
 
         // ✅ Enviar credenciales de nuevo usuario
-        public void SendUserCredentials(string correoDestino, string usuario, string clave, string rol, string nombre)
+        public async Task SendUserCredentialsAsync(string correoDestino, string usuario, string clave, string rol, string nombre)
         {
             try
             {
-                var mail = new MailMessage
-                {
-                    From = new MailAddress(_from, _fromName),
-                    Subject = "Credenciales de Acceso - SkyNet",
-                    Body = $@"
+                var client = GetClient();
+                var from = new EmailAddress(_from, _fromName);
+                var to = new EmailAddress(correoDestino);
+                var subject = "Credenciales de Acceso - SkyNet";
+
+                var body = $@"
 Hola {nombre},
 
 Se ha creado tu usuario para el sistema SkyNet.
@@ -41,22 +40,20 @@ Por motivos de seguridad, te recomendamos cambiar tu contraseña al iniciar sesi
 
 Saludos,
 SkyNet System
-",
-                    IsBodyHtml = false
-                };
+";
 
-                mail.To.Add(correoDestino);
-
-                GetSmtp().Send(mail);
+                var msg = MailHelper.CreateSingleEmail(from, to, subject, body, null);
+                await client.SendEmailAsync(msg);
+                Console.WriteLine($"✅ Correo enviado a {correoDestino} ({rol})");
             }
             catch (Exception ex)
             {
-                Console.WriteLine("Error enviando correo de credenciales: " + ex.Message);
+                Console.WriteLine("❌ Error enviando correo de credenciales: " + ex.Message);
             }
         }
 
         // ✅ Enviar correos de visita asignada
-        public void SendVisitaAsignadaEmails(
+        public async Task SendVisitaAsignadaEmailsAsync(
             string correoCliente,
             string correoTecnico,
             string cliente,
@@ -68,16 +65,16 @@ SkyNet System
         {
             try
             {
+                var client = GetClient();
                 string coordenadasText = string.IsNullOrWhiteSpace(coords) ? "No registradas" : coords;
+                var from = new EmailAddress(_from, _fromName);
 
                 // ---- Técnico ----
                 if (!string.IsNullOrWhiteSpace(correoTecnico))
                 {
-                    var mailTec = new MailMessage
-                    {
-                        From = new MailAddress(_from, _fromName),
-                        Subject = "Nueva Visita Asignada - SkyNet - Tecico",
-                        Body = $@"
+                    var toTec = new EmailAddress(correoTecnico);
+                    var subjectTec = "Nueva Visita Asignada - SkyNet (Técnico)";
+                    var bodyTec = $@"
 Hola {tecnico},
 
 Se te ha asignado una nueva visita.
@@ -90,22 +87,17 @@ Se te ha asignado una nueva visita.
 Por favor revisa los detalles y prepárate para la visita.
 
 SkyNet System
-",
-                        IsBodyHtml = false
-                    };
-
-                    mailTec.To.Add(correoTecnico);
-                    GetSmtp().Send(mailTec);
+";
+                    var msgTec = MailHelper.CreateSingleEmail(from, toTec, subjectTec, bodyTec, null);
+                    await client.SendEmailAsync(msgTec);
                 }
 
                 // ---- Cliente ----
                 if (!string.IsNullOrWhiteSpace(correoCliente))
                 {
-                    var mailCli = new MailMessage
-                    {
-                        From = new MailAddress(_from, _fromName),
-                        Subject = "Visita Programada - SkyNet -Cliente",
-                        Body = $@"
+                    var toCli = new EmailAddress(correoCliente);
+                    var subjectCli = "Visita Programada - SkyNet";
+                    var bodyCli = $@"
 Hola {cliente},
 
 Hemos programado una visita para su atención.
@@ -118,41 +110,38 @@ Hemos programado una visita para su atención.
 Gracias por preferir nuestros servicios.
 
 SkyNet System
-",
-                        IsBodyHtml = false
-                    };
-
-                    mailCli.To.Add(correoCliente);
-                    GetSmtp().Send(mailCli);
+";
+                    var msgCli = MailHelper.CreateSingleEmail(from, toCli, subjectCli, bodyCli, null);
+                    await client.SendEmailAsync(msgCli);
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine("Error enviando correos de visita: " + ex.Message);
+                Console.WriteLine("❌ Error enviando correos de visita asignada: " + ex.Message);
             }
         }
 
-// ✅ Enviar correos cuando la visita es procesada (atendida)
-public void SendVisitaProcesadaEmail(
-    string correoCliente,
-    string correoSupervisor,
-    string tecnico,
-    string fechaAtencion,
-    string coordenadasFinales
-)
-{
-    try
-    {
-        string coordsText = string.IsNullOrWhiteSpace(coordenadasFinales) ? "No registradas" : coordenadasFinales;
-
-        // ---- Correo al Cliente con copia al Supervisor ----
-        if (!string.IsNullOrWhiteSpace(correoCliente))
+        // ✅ Enviar correos cuando la visita es procesada (atendida)
+        public async Task SendVisitaProcesadaEmailAsync(
+            string correoCliente,
+            string correoSupervisor,
+            string tecnico,
+            string fechaAtencion,
+            string coordenadasFinales
+        )
         {
-            var mailCli = new MailMessage
+            try
             {
-                From = new MailAddress(_from, _fromName),
-                Subject = "Visita Atendida - SkyNet",
-                Body = $@"
+                var client = GetClient();
+                var from = new EmailAddress(_from, _fromName);
+                string coordsText = string.IsNullOrWhiteSpace(coordenadasFinales) ? "No registradas" : coordenadasFinales;
+
+                // ---- Cliente ----
+                if (!string.IsNullOrWhiteSpace(correoCliente))
+                {
+                    var toCli = new EmailAddress(correoCliente);
+                    var subjectCli = "Visita Atendida - SkyNet";
+                    var bodyCli = $@"
 Estimado cliente,
 
 Le informamos que la visita asignada ha sido atendida.
@@ -163,123 +152,101 @@ Le informamos que la visita asignada ha sido atendida.
 
 Gracias por permitirnos servirle,
 SkyNet System
-",
-                IsBodyHtml = false
-            };
+";
+                    var msgCli = MailHelper.CreateSingleEmail(from, toCli, subjectCli, bodyCli, null);
 
-            mailCli.To.Add(correoCliente);
+                    // Copia al supervisor
+                    if (!string.IsNullOrWhiteSpace(correoSupervisor))
+                        msgCli.AddCc(new EmailAddress(correoSupervisor));
 
-            if (!string.IsNullOrWhiteSpace(correoSupervisor))
-                mailCli.CC.Add(correoSupervisor);
-
-            GetSmtp().Send(mailCli);
-        }
-        else if (!string.IsNullOrWhiteSpace(correoSupervisor))
-        {
-            // Si el cliente no tiene correo, enviar solo al supervisor
-            var mailSup = new MailMessage
-            {
-                From = new MailAddress(_from, _fromName),
-                Subject = "Visita Atendida - Informe SkyNet",
-                Body = $@"
+                    await client.SendEmailAsync(msgCli);
+                }
+                else if (!string.IsNullOrWhiteSpace(correoSupervisor))
+                {
+                    // Solo al supervisor si el cliente no tiene correo
+                    var toSup = new EmailAddress(correoSupervisor);
+                    var subjectSup = "Visita Atendida - Informe SkyNet";
+                    var bodySup = $@"
 Se atendió la visita asignada.
 
-🧑‍🔧 Técnico que realizó la atención: {tecnico}
+🧑‍🔧 Técnico: {tecnico}
 📅 Fecha de atención: {fechaAtencion}
-📍 Coordenadas de atención: {coordsText}
+📍 Coordenadas: {coordsText}
 
-Saludos,
 SkyNet System
-",
-                IsBodyHtml = false
-            };
-
-            mailSup.To.Add(correoSupervisor);
-            GetSmtp().Send(mailSup);
-        }
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine("Error enviando correo de visita procesada: " + ex.Message);
-    }
-}
-
-// ✅ Enviar correo cuando la visita fue procesada
-public void SendVisitaProcesadaEmail(
-    string correoCliente,
-    string correoSupervisor,
-    string cliente,
-    string tecnico,
-    string coordenadas,
-    string fechaAtencion
-)
-{
-    string coordsText = string.IsNullOrWhiteSpace(coordenadas) ? "No registradas" : coordenadas;
-
-    try
-    {
-        // 📩 Email para el Cliente
-        if (!string.IsNullOrWhiteSpace(correoCliente))
-        {
-            var mailCli = new MailMessage
+";
+                    var msgSup = MailHelper.CreateSingleEmail(from, toSup, subjectSup, bodySup, null);
+                    await client.SendEmailAsync(msgSup);
+                }
+            }
+            catch (Exception ex)
             {
-                From = new MailAddress(_from, _fromName),
-                Subject = "Visita Atendida - SkyNet",
-                Body = $@"
+                Console.WriteLine("❌ Error enviando correo de visita procesada: " + ex.Message);
+            }
+        }
+
+        // ✅ Versión extendida: correo al cliente y supervisor
+        public async Task SendVisitaProcesadaEmailAsync(
+            string correoCliente,
+            string correoSupervisor,
+            string cliente,
+            string tecnico,
+            string coordenadas,
+            string fechaAtencion
+        )
+        {
+            try
+            {
+                var client = GetClient();
+                var from = new EmailAddress(_from, _fromName);
+                string coordsText = string.IsNullOrWhiteSpace(coordenadas) ? "No registradas" : coordenadas;
+
+                // ---- Cliente ----
+                if (!string.IsNullOrWhiteSpace(correoCliente))
+                {
+                    var toCli = new EmailAddress(correoCliente);
+                    var subjectCli = "Visita Atendida - SkyNet";
+                    var bodyCli = $@"
 Hola {cliente},
 
 Su visita ha sido atendida satisfactoriamente.
 
 🧑‍🔧 Técnico que lo atendió: {tecnico}
 📍 Coordenadas de atención: {coordsText}
-📅 Fecha y hora de atención: {fechaAtencion}
+📅 Fecha y hora: {fechaAtencion}
 
 Gracias por confiar en nuestros servicios.
 SkyNet System
-",
-                IsBodyHtml = false
-            };
+";
+                    var msgCli = MailHelper.CreateSingleEmail(from, toCli, subjectCli, bodyCli, null);
+                    await client.SendEmailAsync(msgCli);
+                }
 
-            mailCli.To.Add(correoCliente);
-            GetSmtp().Send(mailCli);
-        }
-
-        // 📩 Copia al Supervisor
-        if (!string.IsNullOrWhiteSpace(correoSupervisor))
-        {
-            var mailSup = new MailMessage
-            {
-                From = new MailAddress(_from, _fromName),
-                Subject = "Visita Atendida - Información",
-                Body = $@"
+                // ---- Supervisor ----
+                if (!string.IsNullOrWhiteSpace(correoSupervisor))
+                {
+                    var toSup = new EmailAddress(correoSupervisor);
+                    var subjectSup = "Visita Atendida - Información SkyNet";
+                    var bodySup = $@"
 Hola,
 
 Se ha completado una visita asignada a uno de sus técnicos.
 
 🧑‍🔧 Técnico: {tecnico}
 👤 Cliente: {cliente}
-📍 Coordenadas de atención: {coordsText}
+📍 Coordenadas: {coordsText}
 📅 Fecha y hora: {fechaAtencion}
 
 SkyNet System
-",
-                IsBodyHtml = false
-            };
-
-            mailSup.To.Add(correoSupervisor);
-            GetSmtp().Send(mailSup);
+";
+                    var msgSup = MailHelper.CreateSingleEmail(from, toSup, subjectSup, bodySup, null);
+                    await client.SendEmailAsync(msgSup);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("❌ Error enviando correos de visita procesada: " + ex.Message);
+            }
         }
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine("❌ Error enviando correos de visita procesada: " + ex.Message);
-    }
-}
-
-
-
-
-
-
     }
 }
