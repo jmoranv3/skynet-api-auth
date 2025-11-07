@@ -618,7 +618,7 @@ Console.WriteLine($"connectionString");
                             });
                         }
 
-                        return Results.Ok(new { total = supervisores.Count, supervisores });
+                        return Results.Ok(supervisores);
                     }
                     catch (SqlException ex)
                     {
