@@ -760,7 +760,7 @@ Console.WriteLine($"connectionString");
                         try
                         {
                             var emailService = app.Services.GetService<SkynetApiAuth.Services.EmailService>();
-                            emailService?.SendUserCredentials(dto.correo, dto.usuario, dto.clave, dto.rol, dto.nombre);
+                            emailService?.SendUserCredentialsAsync(dto.correo, dto.usuario, dto.clave, dto.rol, dto.nombre);
                         }
                         catch (Exception exMail)
                         {
@@ -1440,7 +1440,7 @@ Console.WriteLine($"connectionString");
                                     try
                                     {
                                         var emailService = context.RequestServices.GetService<SkynetApiAuth.Services.EmailService>();
-                                        emailService?.SendVisitaAsignadaEmails(
+                                        emailService?.SendVisitaAsignadaEmailsAsync(
                                             clienteMail,
                                             tecnicoMail,
                                             clienteNom,
@@ -2024,7 +2024,7 @@ app.MapPut("/api/usuarios/{id:int}/asignaciones", async (int id, HttpRequest req
                     try
                     {
                         var emailService = app.Services.GetService<SkynetApiAuth.Services.EmailService>();
-                        emailService?.SendVisitaProcesadaEmail(
+                        emailService?.SendVisitaProcesadaEmailAsync(
                             correoCliente,
                             correoSupervisor,
                             tecnicoNom,
