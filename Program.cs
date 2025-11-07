@@ -227,7 +227,7 @@ Console.WriteLine($"connectionString");
                                 });
                             }
 
-                            return Results.Ok(new { total = clientes.Count, clientes });
+                            return Results.Ok(clientes);
                         }
                         catch (SqlException ex)
                         {
@@ -565,7 +565,7 @@ Console.WriteLine($"connectionString");
                             });
                         }
 
-                        return Results.Ok(new { total = usuarios.Count, usuarios });
+                       return Results.Ok(usuarios);
                     }
                     catch (SqlException ex)
                     {
@@ -670,7 +670,7 @@ Console.WriteLine($"connectionString");
                             });
                         }
 
-                        return Results.Ok(new { total = tecnicos.Count, tecnicos });
+                       return Results.Ok(tecnicos);
                     }
                     catch (SqlException ex)
                     {
@@ -1337,11 +1337,7 @@ Console.WriteLine($"connectionString");
                                 });
                             }
 
-                            return Results.Ok(new
-                            {
-                                total = visitas.Count,
-                                visitas
-                            });
+                    return Results.Ok(visitas);
                         }
                         catch (SqlException ex)
                         {
