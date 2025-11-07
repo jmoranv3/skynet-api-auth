@@ -282,7 +282,7 @@ Console.WriteLine($"connectionString");
                             V.fecha_visita ASC,
                             U.usuario ASC";
 
-                        string whereClause = "WHERE CONVERT(date, V.fecha_visita) = CONVERT(date, GETDATE())";
+                string whereClause = "WHERE CONVERT(date, V.fecha_visita) = CONVERT(date, DATEADD(HOUR, -6, GETDATE()))";
 
                         if (rol == "SUP")
                         {
