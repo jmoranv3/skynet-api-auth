@@ -363,7 +363,7 @@ Console.WriteLine($"connectionString");
                             /**WHERE_CLAUSE**/
                             ORDER BY V.fecha_visita ASC, U.usuario ASC";
 
-                            string whereClause = "WHERE V.estado = 'COMPLETADA' AND CONVERT(date, V.fecha_visita) = CONVERT(date, GETDATE())";
+                            string whereClause = "WHERE V.estado = 'COMPLETADA' AND CONVERT(date, V.fecha_visita) = CONVERT(date, DATEADD(HOUR, -6, GETDATE()))";
 
                             if (rol == "SUP")
                             {
