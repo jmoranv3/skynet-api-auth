@@ -1350,128 +1350,130 @@ Console.WriteLine($"connectionString");
                     });
 
 
+app.MapPost("/api/visitas", async (HttpContext context, VisitaCreateDto dto) =>
+{
+    string? clientIp = context.Connection.RemoteIpAddress?.ToString();
 
-                        app.MapPost("/api/visitas", async (HttpContext context, VisitaCreateDto dto) =>
-                        {
-                            string? clientIp = context.Connection.RemoteIpAddress?.ToString();
+    var connectionString = Environment.GetEnvironmentVariable("DefaultConnection")
+        ?? builder.Configuration.GetConnectionString("DefaultConnection");
 
-                            var connectionString = Environment.GetEnvironmentVariable("DefaultConnection")
-                                ?? builder.Configuration.GetConnectionString("DefaultConnection");
+    if (string.IsNullOrWhiteSpace(connectionString))
+        return Results.Problem($"❌ No se encontró la cadena de conexión.\n\n🌐 IP: {clientIp}");
 
-                            if (string.IsNullOrWhiteSpace(connectionString))
-                                return Results.Problem($"❌ No se encontró la cadena de conexión.\n\n🌐 IP: {clientIp}");
+    try
+    {
+        // ✅ Validar DTO
+        if (dto == null)
+            return Results.BadRequest(new { message = "Datos inválidos" });
 
-                            try
-                            {
-                                // Validar DTO
-                                if (dto == null)
-                                    return Results.BadRequest(new { message = "Datos inválidos" });
+        if (dto.id_cliente <= 0 || dto.id_supervisor <= 0 || dto.id_tecnico <= 0)
+            return Results.BadRequest(new { message = "Cliente, Supervisor y Técnico son obligatorios" });
 
-                                if (dto.id_cliente <= 0 || dto.id_supervisor <= 0 || dto.id_tecnico <= 0)
-                                    return Results.BadRequest(new { message = "Cliente, Supervisor y Técnico son obligatorios" });
+        if (!DateTime.TryParse(dto.fecha_visita, out var fechaVisitaParsed))
+            return Results.BadRequest(new { message = "La fecha_visita no tiene un formato válido (yyyy-MM-dd)" });
 
-                                if (!DateTime.TryParse(dto.fecha_visita, out var fechaVisitaParsed))
-                                    return Results.BadRequest(new { message = "La fecha_visita no tiene un formato válido (yyyy-MM-dd)" });
+        using var cn = new SqlConnection(connectionString);
+        await cn.OpenAsync();
 
-                                using var cn = new SqlConnection(connectionString);
-                                await cn.OpenAsync();
+        // 🔹 Insertar visita
+        var insertQuery = @"
+            INSERT INTO TBL_VISITA (id_cliente, id_supervisor, id_tecnico, coordenadas_planificadas, fecha_visita)
+            OUTPUT INSERTED.id_visita
+            VALUES (@cli, @sup, @tec, @coord, @fecha)";
 
-                                // 🔹 Insertar visita
-                                var insertQuery = @"
-                                    INSERT INTO TBL_VISITA (id_cliente, id_supervisor, id_tecnico, coordenadas_planificadas, fecha_visita)
-                                    OUTPUT INSERTED.id_visita
-                                    VALUES (@cli, @sup, @tec, @coord, @fecha)";
-                                
-                                int idVisita;
-                                using (var cmd = new SqlCommand(insertQuery, cn))
-                                {
-                                    cmd.Parameters.AddWithValue("@cli", dto.id_cliente);
-                                    cmd.Parameters.AddWithValue("@sup", dto.id_supervisor);
-                                    cmd.Parameters.AddWithValue("@tec", dto.id_tecnico);
-                                    cmd.Parameters.AddWithValue("@coord", (object?)dto.coordenadas_planificadas ?? DBNull.Value);
-                                    cmd.Parameters.AddWithValue("@fecha", fechaVisitaParsed);
+        int idVisita;
+        using (var cmd = new SqlCommand(insertQuery, cn))
+        {
+            cmd.Parameters.AddWithValue("@cli", dto.id_cliente);
+            cmd.Parameters.AddWithValue("@sup", dto.id_supervisor);
+            cmd.Parameters.AddWithValue("@tec", dto.id_tecnico);
+            cmd.Parameters.AddWithValue("@coord", (object?)dto.coordenadas_planificadas ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@fecha", fechaVisitaParsed);
 
-                                    idVisita = (int)await cmd.ExecuteScalarAsync();
-                                }
+            idVisita = (int)await cmd.ExecuteScalarAsync();
+        }
 
-                                // 🔹 Obtener datos para email
-                                string clienteNom = "", clienteDir = "", clienteCoord = "", clienteMail = "";
-                                string tecnicoNom = "", tecnicoMail = "";
+        // 🔹 Obtener datos para email
+        string clienteNom = "", clienteDir = "", clienteCoord = "", clienteMail = "";
+        string tecnicoNom = "", tecnicoMail = "";
 
-                                // Cliente
-                                using (var cmd = new SqlCommand(@"
-                                    SELECT nombre, direccion, coordenadas, correo
-                                    FROM TBL_CLIENTES WHERE id_cliente=@id", cn))
-                                {
-                                    cmd.Parameters.AddWithValue("@id", dto.id_cliente);
-                                    using var rd = await cmd.ExecuteReaderAsync();
-                                    if (await rd.ReadAsync())
-                                    {
-                                        clienteNom = rd.GetString(0);
-                                        clienteDir = rd.IsDBNull(1) ? "" : rd.GetString(1);
-                                        clienteCoord = rd.IsDBNull(2) ? "" : rd.GetString(2);
-                                        clienteMail = rd.IsDBNull(3) ? "" : rd.GetString(3);
-                                    }
-                                }
+        // Cliente
+        using (var cmd = new SqlCommand(@"
+            SELECT nombre, direccion, coordenadas, correo
+            FROM TBL_CLIENTES WHERE id_cliente=@id", cn))
+        {
+            cmd.Parameters.AddWithValue("@id", dto.id_cliente);
+            using var rd = await cmd.ExecuteReaderAsync();
+            if (await rd.ReadAsync())
+            {
+                clienteNom = rd.GetString(0);
+                clienteDir = rd.IsDBNull(1) ? "" : rd.GetString(1);
+                clienteCoord = rd.IsDBNull(2) ? "" : rd.GetString(2);
+                clienteMail = rd.IsDBNull(3) ? "" : rd.GetString(3);
+            }
+        }
 
-                                // Técnico
-                                using (var cmd = new SqlCommand(@"
-                                    SELECT IU.nombre, IU.correo
-                                    FROM TBL_INFO_USUARIO IU
-                                    INNER JOIN TBL_USUARIO U ON U.id_usuario = IU.id_usuario
-                                    WHERE U.id_usuario=@id", cn))
-                                {
-                                    cmd.Parameters.AddWithValue("@id", dto.id_tecnico);
-                                    using var rd = await cmd.ExecuteReaderAsync();
-                                    if (await rd.ReadAsync())
-                                    {
-                                        tecnicoNom = rd.GetString(0);
-                                        tecnicoMail = rd.IsDBNull(1) ? "" : rd.GetString(1);
-                                    }
-                                }
+        // Técnico
+        using (var cmd = new SqlCommand(@"
+            SELECT IU.nombre, IU.correo
+            FROM TBL_INFO_USUARIO IU
+            INNER JOIN TBL_USUARIO U ON U.id_usuario = IU.id_usuario
+            WHERE U.id_usuario=@id", cn))
+        {
+            cmd.Parameters.AddWithValue("@id", dto.id_tecnico);
+            using var rd = await cmd.ExecuteReaderAsync();
+            if (await rd.ReadAsync())
+            {
+                tecnicoNom = rd.GetString(0);
+                tecnicoMail = rd.IsDBNull(1) ? "" : rd.GetString(1);
+            }
+        }
 
-                                // 🔹 Enviar email en segundo plano
-                                _ = Task.Run(() =>
-                                {
-                                    try
-                                    {
-                                        var emailService = context.RequestServices.GetService<SkynetApiAuth.Services.EmailService>();
-                                        emailService?.SendVisitaAsignadaEmailsAsync(
-                                            clienteMail,
-                                            tecnicoMail,
-                                            clienteNom,
-                                            clienteDir,
-                                            clienteCoord,
-                                            tecnicoNom,
-                                            dto.fecha_visita
-                                        );
+        // ✅ Instanciar el servicio ANTES de salir del contexto
+        var emailService = new SkynetApiAuth.Services.EmailService();
 
-                                        Console.WriteLine($"📨 Email de visita #{idVisita} enviado. IP: {clientIp}");
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        Console.WriteLine($"❌ Error al enviar email visita #{idVisita}: {ex.Message}. IP: {clientIp}");
-                                    }
-                                });
+        // 🔹 Enviar email en segundo plano, sin depender del HttpContext
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await emailService.SendVisitaAsignadaEmailsAsync(
+                    clienteMail,
+                    tecnicoMail,
+                    clienteNom,
+                    clienteDir,
+                    clienteCoord,
+                    tecnicoNom,
+                    dto.fecha_visita
+                );
 
-                                return Results.Ok(new
-                                {
-                                    message = "✅ Visita creada correctamente",
-                                    id_visita = idVisita,
-                                    cliente = clienteNom,
-                                    tecnico = tecnicoNom,
-                                    fecha_visita = fechaVisitaParsed.ToString("yyyy-MM-dd")
-                                });
-                            }
-                            catch (SqlException ex)
-                            {
-                                return Results.Problem($"❌ Error SQL al crear la visita:\n{ex.Message}\n\n🌐 IP: {clientIp}");
-                            }
-                            catch (Exception ex)
-                            {
-                                return Results.Problem($"❌ Error inesperado:\n{ex.Message}\n\n🌐 IP: {clientIp}");
-                            }
-                        });
+                Console.WriteLine($"📨 Email de visita #{idVisita} enviado correctamente. IP: {clientIp}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ Error al enviar email visita #{idVisita}: {ex.Message}. IP: {clientIp}");
+            }
+        });
+
+        return Results.Ok(new
+        {
+            message = "✅ Visita creada correctamente",
+            id_visita = idVisita,
+            cliente = clienteNom,
+            tecnico = tecnicoNom,
+            fecha_visita = fechaVisitaParsed.ToString("yyyy-MM-dd")
+        });
+    }
+    catch (SqlException ex)
+    {
+        return Results.Problem($"❌ Error SQL al crear la visita:\n{ex.Message}\n\n🌐 IP: {clientIp}");
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"❌ Error inesperado:\n{ex.Message}\n\n🌐 IP: {clientIp}");
+    }
+});
+
 
 
                         app.MapPut("/api/visitas/{id:int}", async (int id, VisitaUpdateDto dto) =>
