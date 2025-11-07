@@ -5,7 +5,7 @@ namespace SkynetApiAuth.Services
 {
     public class EmailService
     {
-        private readonly string _from = "skynetsa2513@gmail.com";
+        private readonly string _from = "jmoranv3@miumg.edu.gt";
         private readonly string _fromName = "SkyNet System";
 
         private SendGridClient GetClient()
@@ -21,7 +21,10 @@ namespace SkynetApiAuth.Services
         public async Task SendUserCredentialsAsync(string correoDestino, string usuario, string clave, string rol, string nombre)
         {
             try
+
+
             {
+                 Console.WriteLine(correoDestino);
                 var client = GetClient();
                 var from = new EmailAddress(_from, _fromName);
                 var to = new EmailAddress(correoDestino);
