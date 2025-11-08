@@ -241,93 +241,102 @@ Console.WriteLine($"connectionString");
 
 
         // ================== DASHBOARD ==================
-                app.MapGet("/api/dashboard/visitas/programadas", async (HttpContext context) =>
-                {
-                    string? clientIp = context.Connection.RemoteIpAddress?.ToString();
-                    var connectionString = Environment.GetEnvironmentVariable("DefaultConnection")
-                        ?? builder.Configuration.GetConnectionString("DefaultConnection");
+app.MapGet("/api/dashboard/visitas/programadas", async (HttpContext context) =>
+{
+    string? clientIp = context.Connection.RemoteIpAddress?.ToString();
+    var connectionString = Environment.GetEnvironmentVariable("DefaultConnection")
+        ?? builder.Configuration.GetConnectionString("DefaultConnection");
 
-                    if (string.IsNullOrWhiteSpace(connectionString))
-                        return Results.Problem($"❌ No se encontró la cadena de conexión.\n\n🌐 IP: {clientIp}");
+    if (string.IsNullOrWhiteSpace(connectionString))
+        return Results.Problem($"❌ No se encontró la cadena de conexión.\n\n🌐 IP: {clientIp}");
 
-                    try
-                    {
-                        string rol = context.Request.Headers["rol"].ToString().ToUpper();
-                        string idUsuarioStr = context.Request.Headers["id_usuario"];
+    try
+    {
+        string rol = context.Request.Headers["rol"].ToString().ToUpper();
+        string idUsuarioStr = context.Request.Headers["id_usuario"];
 
-                        if (!int.TryParse(idUsuarioStr, out int idUsuario))
-                            return Results.BadRequest(new { message = "El header 'id_usuario' es requerido y debe ser entero." });
+        if (!int.TryParse(idUsuarioStr, out int idUsuario))
+            return Results.BadRequest(new { message = "El header 'id_usuario' es requerido y debe ser entero." });
 
-                        using var connection = new SqlConnection(connectionString);
-                        await connection.OpenAsync();
+        using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
 
-                        var query = @"
-                        SELECT 
-                            V.id_visita,
-                            C.nombre AS cliente,
-                            U.usuario AS tecnico,
-                            V.estado,
-                            V.fecha_visita
-                        FROM TBL_VISITA V
-                        INNER JOIN TBL_CLIENTES C ON V.id_cliente = C.id_cliente
-                        INNER JOIN TBL_USUARIO U ON V.id_tecnico = U.id_usuario
-                        /**WHERE_CLAUSE**/
-                        ORDER BY 
-                            CASE V.estado
-                                WHEN 'PENDIENTE' THEN 1
-                                WHEN 'EN_PROGRESO' THEN 2
-                                WHEN 'COMPLETADA' THEN 3
-                                WHEN 'CANCELADA' THEN 4
-                            END,
-                            V.fecha_visita ASC,
-                            U.usuario ASC";
+        var query = @"
+        SELECT 
+            V.id_visita,
+            V.id_cliente,
+            C.nombre AS cliente,
+            C.direccion AS cliente_direccion,
+            C.coordenadas AS cliente_coordenadas,
+            V.coordenadas_planificadas,
+            U.usuario AS tecnico,
+            V.estado,
+            V.fecha_visita
+        FROM TBL_VISITA V
+        INNER JOIN TBL_CLIENTES C ON V.id_cliente = C.id_cliente
+        INNER JOIN TBL_USUARIO U ON V.id_tecnico = U.id_usuario
+        /**WHERE_CLAUSE**/
+        ORDER BY 
+            CASE V.estado
+                WHEN 'PENDIENTE' THEN 1
+                WHEN 'EN_PROGRESO' THEN 2
+                WHEN 'COMPLETADA' THEN 3
+                WHEN 'CANCELADA' THEN 4
+            END,
+            V.fecha_visita ASC,
+            U.usuario ASC";
 
-                string whereClause = "WHERE CONVERT(date, V.fecha_visita) = CONVERT(date, DATEADD(HOUR, -6, GETDATE()))";
+        // 🔹 Mostrar solo las visitas de HOY
+        string whereClause = "WHERE CONVERT(date, V.fecha_visita) = CONVERT(date, DATEADD(HOUR, -6, GETDATE()))";
 
-                        if (rol == "SUP")
-                        {
-                            whereClause += @" AND V.id_tecnico IN (
-                                                SELECT id_tecnico 
-                                                FROM TBL_SUPERVISOR_TECNICO 
-                                                WHERE id_supervisor = @idUsuario
-                                            )";
-                        }
-                        else if (rol == "TEC")
-                        {
-                            whereClause += " AND V.id_tecnico = @idUsuario";
-                        }
+        if (rol == "SUP")
+        {
+            whereClause += @" AND V.id_tecnico IN (
+                                SELECT id_tecnico 
+                                FROM TBL_SUPERVISOR_TECNICO 
+                                WHERE id_supervisor = @idUsuario
+                            )";
+        }
+        else if (rol == "TEC")
+        {
+            whereClause += " AND V.id_tecnico = @idUsuario";
+        }
 
-                        query = query.Replace("/**WHERE_CLAUSE**/", whereClause);
+        query = query.Replace("/**WHERE_CLAUSE**/", whereClause);
 
-                        using var command = new SqlCommand(query, connection);
-                        command.Parameters.AddWithValue("@idUsuario", idUsuario);
+        using var command = new SqlCommand(query, connection);
+        command.Parameters.AddWithValue("@idUsuario", idUsuario);
 
-                        using var reader = await command.ExecuteReaderAsync();
-                        var visitas = new List<object>();
+        using var reader = await command.ExecuteReaderAsync();
+        var visitas = new List<object>();
 
-                        while (await reader.ReadAsync())
-                        {
-                            visitas.Add(new
-                            {
-                                id_visita = reader.GetInt32(0),
-                                cliente = reader.GetString(1),
-                                tecnico = reader.GetString(2),
-                                estado = reader.GetString(3),
-                                fecha_visita = reader.GetDateTime(4).ToString("yyyy-MM-dd")
-                            });
-                        }
+        while (await reader.ReadAsync())
+        {
+            visitas.Add(new
+            {
+                id_visita = reader.GetInt32(0),
+                id_cliente = reader.GetInt32(1),
+                cliente = reader.GetString(2),
+                cliente_direccion = reader.IsDBNull(3) ? null : reader.GetString(3),
+                cliente_coordenadas = reader.IsDBNull(4) ? null : reader.GetString(4),
+                coordenadas_planificadas = reader.IsDBNull(5) ? null : reader.GetString(5),
+                tecnico = reader.GetString(6),
+                estado = reader.GetString(7),
+                fecha_visita = reader.GetDateTime(8).ToString("yyyy-MM-dd")
+            });
+        }
 
-                        return Results.Ok(new { total = visitas.Count, visitas });
-                    }
-                    catch (SqlException ex)
-                    {
-                        return Results.Problem($"❌ Error SQL:\n{ex.Message}\n\n🌐 IP: {clientIp}");
-                    }
-                    catch (Exception ex)
-                    {
-                        return Results.Problem($"❌ Error inesperado:\n{ex.Message}\n\n🌐 IP: {clientIp}");
-                    }
-                });
+        return Results.Ok(new { total = visitas.Count, visitas });
+    }
+    catch (SqlException ex)
+    {
+        return Results.Problem($"❌ Error SQL:\n{ex.Message}\n\n🌐 IP: {clientIp}");
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"❌ Error inesperado:\n{ex.Message}\n\n🌐 IP: {clientIp}");
+    }
+});
 
 
                     app.MapGet("/api/dashboard/visitas/completadas", async (HttpContext context) =>
