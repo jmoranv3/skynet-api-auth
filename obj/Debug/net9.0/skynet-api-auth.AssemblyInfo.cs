@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("skynet-api-auth")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+8f910931ce91282bc85828602213f55682d4e2f4")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+f38cbcd5a20ccb391c91e3931e17742acf30ca15")]
 [assembly: System.Reflection.AssemblyProductAttribute("skynet-api-auth")]
 [assembly: System.Reflection.AssemblyTitleAttribute("skynet-api-auth")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
