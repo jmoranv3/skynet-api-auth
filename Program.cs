@@ -268,7 +268,6 @@ Console.WriteLine($"connectionString");
                             U.usuario AS tecnico,
                             V.estado,
                             V.fecha_visita
-                            V.coordenadas_planificadas
                         FROM TBL_VISITA V
                         INNER JOIN TBL_CLIENTES C ON V.id_cliente = C.id_cliente
                         INNER JOIN TBL_USUARIO U ON V.id_tecnico = U.id_usuario
@@ -314,8 +313,7 @@ Console.WriteLine($"connectionString");
                                 cliente = reader.GetString(1),
                                 tecnico = reader.GetString(2),
                                 estado = reader.GetString(3),
-                                fecha_visita = reader.GetDateTime(4).ToString("yyyy-MM-dd"),
-                                coordenadas_planificadas= reader.GetString(5)
+                                fecha_visita = reader.GetDateTime(4).ToString("yyyy-MM-dd")
                             });
                         }
 
