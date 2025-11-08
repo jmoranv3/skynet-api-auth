@@ -315,7 +315,7 @@ Console.WriteLine($"connectionString");
                                 tecnico = reader.GetString(2),
                                 estado = reader.GetString(3),
                                 fecha_visita = reader.GetDateTime(4).ToString("yyyy-MM-dd"),
-                                coordenadas_planificadas= reader.GetString(5),
+                                coordenadas_planificadas= reader.GetString(5)
                             });
                         }
 
